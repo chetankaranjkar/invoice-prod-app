@@ -2,6 +2,7 @@
 using InvoiceApp.Application.DTOs;
 using InvoiceApp.Application.Interfaces;
 using InvoiceApp.Domain.Entities;
+using InvoiceApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
@@ -9,50 +10,90 @@ using System.Threading.Tasks;
 
 namespace InvoiceApp.Api.Controllers
 {
-   
+
     [Authorize]
     public class CustomersController : BaseController
     {
-        private readonly ICustomerRepository _customerRepository;
+        private readonly ICustomerRepository _customerService;
         private readonly IUserContext _userContext;
-        private readonly IMapper _mapper;
 
-        public CustomersController(
-            ICustomerRepository customerRepository,
-            IUserContext userContext,
-            IMapper mapper)
+        public CustomersController(ICustomerRepository customerService, IUserContext userContext)
         {
-            _customerRepository = customerRepository;
+            _customerService = customerService;
             _userContext = userContext;
-            _mapper = mapper;
         }
 
         [HttpGet]
-        public async Task<ActionResult<List<CustomerDto>>> GetCustomers()
+        public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers()
         {
             var userId = _userContext.GetCurrentUserId();
-            if (userId == null)
-                return Unauthorized("User not authenticated");
+            if (userId == null) return Unauthorized();
 
-            var customers = await _customerRepository.GetByUserIdAsync(userId.Value);
-            var customerDtos = _mapper.Map<List<CustomerDto>>(customers);
-            return Ok(customerDtos);
+            var customers = await _customerService.GetCustomersByUserIdAsync(userId.Value);
+            return Ok(customers);
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<CustomerProfileDto>> GetCustomer(int id)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var customer = await _customerService.GetCustomerByIdAsync(id, userId.Value);
+            if (customer == null) return NotFound();
+
+            return Ok(customer);
         }
 
         [HttpPost]
-        public async Task<ActionResult<CustomerDto>> CreateCustomer(CreateCustomerDto createCustomerDto)
+        public async Task<ActionResult<CustomerProfileDto>> CreateCustomer(CreateCustomerDto createDto)
         {
             var userId = _userContext.GetCurrentUserId();
-            if (userId == null)
-                return Unauthorized("User not authenticated");
+            if (userId == null) return Unauthorized();
 
-            var customer = _mapper.Map<Customer>(createCustomerDto);
-            customer.UserId = userId.Value;
+            var customer = await _customerService.CreateCustomerAsync(userId.Value, createDto);
+            return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);
+        }
 
-            var createdCustomer = await _customerRepository.AddAsync(customer);
-            var customerDto = _mapper.Map<CustomerDto>(createdCustomer);
+        [HttpPut("{id}")]
+        public async Task<ActionResult<CustomerProfileDto>> UpdateCustomer(int id, UpdateCustomerDto updateDto)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null) return Unauthorized();
 
-            return CreatedAtAction(nameof(GetCustomers), customerDto);
+            var customer = await _customerService.UpdateCustomerAsync(id, userId.Value, updateDto);
+            if (customer == null) return NotFound();
+
+            return Ok(customer);
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteCustomer(int id)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            try
+            {
+                var result = await _customerService.DeleteCustomerAsync(id, userId.Value);
+                if (!result) return NotFound();
+
+                return NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("search")]
+        public async Task<ActionResult<List<CustomerProfileDto>>> SearchCustomers([FromQuery] string term)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var customers = await _customerService.SearchCustomersAsync(userId.Value, term);
+            return Ok(customers);
         }
     }
 }

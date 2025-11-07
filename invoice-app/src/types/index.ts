@@ -20,6 +20,9 @@ export interface UserProfile {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
+  City?:string;
+  State?:string;
+  Zip?:string;
   phone?: string;
   logoUrl?: string;
   createdAt: string;
@@ -48,7 +51,10 @@ export interface UpdateUserProfileDto {
     bankName?: string;
     accountNumber?: string;
     ifscCode?: string;
-    panNumber?: string;
+    panNumber?: string;     
+    City?:string;
+    State?:string;
+    Zip?:string;
     phone?: string;
     logo?: File;
 }
@@ -64,7 +70,10 @@ export interface User {
     bankName?: string;
     accountNumber?: string;
     ifscCode?: string;
-    panNumber?: string;
+    panNumber?: string;     
+    City?:string;
+    State?:string;
+    Zip?:string;
     phone?: string;
     logoUrl?: string;
     createdAt: string;
@@ -74,11 +83,16 @@ export interface Customer {
     id: number;
     customerName: string;
     gstNumber?: string;
+    panNumber?: string;
+    City?:string;
+    State?:string;
+    Zip?:string;
     email?: string;
     phone?: string;
     billingAddress?: string;
     totalBalance: number;
     createdAt: string;
+     
 }
 
 export interface CreateCustomerDto {
@@ -90,6 +104,10 @@ export interface CreateCustomerDto {
     bankName?: string;
     bankAccountNo?: string;
     ifscCode?: string;
+     panNumber?: string;
+    City?:string;
+    State?:string;
+    Zip?:string;
 }
 
 export interface InvoiceItem {

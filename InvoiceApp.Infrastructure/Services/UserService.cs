@@ -68,6 +68,16 @@ namespace InvoiceApp.Infrastructure.Services
             if (!string.IsNullOrEmpty(updateDto.Phone))
                 user.Phone = updateDto.Phone;
 
+            if (!string.IsNullOrEmpty(updateDto.City))
+                user.City = updateDto.City;
+
+            if (!string.IsNullOrEmpty(updateDto.State))
+                user.State = updateDto.State;
+
+            if (!string.IsNullOrEmpty(updateDto.Zip))
+                user.Zip = updateDto.Zip;
+
+
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

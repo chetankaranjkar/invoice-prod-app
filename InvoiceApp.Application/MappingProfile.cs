@@ -9,7 +9,7 @@ namespace InvoiceApp.Application
         public MappingProfile()
         {
             // Customer mappings
-            CreateMap<Customer, CustomerDto>();
+            CreateMap<Customer, CustomerProfileDto>();
             CreateMap<CreateCustomerDto, Customer>();
 
             // Invoice mappings

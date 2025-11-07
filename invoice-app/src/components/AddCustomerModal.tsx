@@ -23,6 +23,10 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         bankName: '',
         bankAccountNo: '',
         ifscCode: '',
+        panNumber: '',
+        City: '',
+        State: '',
+        Zip: ''
     });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -44,6 +48,10 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 bankName: '',
                 bankAccountNo: '',
                 ifscCode: '',
+                panNumber: '',
+                City: '',
+                State: '',
+                Zip: ''
             });
             onClose();
         } catch (err: any) {
@@ -114,6 +122,20 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                 onChange={handleChange}
                                 className="input-field"
                                 placeholder="GSTIN number"
+                            />
+                        </div>
+                        {/* GST Number */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                PAN Number
+                            </label>
+                            <input
+                                type="text"
+                                name="panNumber"
+                                value={formData.panNumber}
+                                onChange={handleChange}
+                                className="input-field"
+                                placeholder="PAN number"
                             />
                         </div>
 
@@ -207,7 +229,48 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                             />
                         </div>
                     </div>
-
+                    {/* CITY */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            City
+                        </label>
+                        <input
+                            type="text"
+                            name="City"
+                            value={formData.City}
+                            onChange={handleChange}
+                            className="input-field"
+                            placeholder="City"
+                        />
+                    </div>
+                    {/* State */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            State
+                        </label>
+                        <input
+                            type="text"
+                            name="State"
+                            value={formData.State}
+                            onChange={handleChange}
+                            className="input-field"
+                            placeholder="State"
+                        />
+                    </div>
+                    {/* ZIP */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Pin Code
+                        </label>
+                        <input
+                            type="text"
+                            name="Zip"
+                            value={formData.Zip}
+                            onChange={handleChange}
+                            className="input-field"
+                            placeholder="Zip Code"
+                        />
+                    </div>
                     {/* Actions */}
                     <div className="flex justify-end space-x-3 pt-6 border-t">
                         <button

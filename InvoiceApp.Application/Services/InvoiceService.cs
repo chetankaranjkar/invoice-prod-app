@@ -31,7 +31,7 @@ namespace InvoiceApp.Application.Services
         public async Task<InvoiceDto> CreateInvoiceAsync(Guid userId, CreateInvoiceDto createInvoiceDto)
         {
             // Validate customer belongs to user
-            var customer = await _customerRepository.GetByIdAsync(createInvoiceDto.CustomerId);
+            var customer = await _customerRepository.GetCustomerByIdAsync(createInvoiceDto.CustomerId,userId);
             if (customer == null || customer.UserId != userId)
                 throw new ArgumentException("Customer not found");
 
@@ -113,10 +113,11 @@ namespace InvoiceApp.Application.Services
             // Update customer total balance
             if (customer != null)
             {
-                customer.TotalBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
+                var newBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
                     .Where(i => i.CustomerId == customer.Id)
                     .Sum(i => i.BalanceAmount);
-                await _customerRepository.UpdateAsync(customer);
+
+                await _customerRepository.UpdateCustomerBalanceAsync(customer.Id, newBalance);
             }
 
             return _mapper.Map<InvoiceDto>(createdInvoice);
@@ -179,14 +180,14 @@ namespace InvoiceApp.Application.Services
                 invoice.Status = "Unpaid";
 
             // Update customer balance
-            var customer = await _customerRepository.GetByIdAsync(invoice.CustomerId);
+            var customer = await _customerRepository.GetCustomerByIdAsync(invoice.CustomerId,userId);
             if (customer != null)
             {
-                customer.TotalBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
+                var newBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
                     .Where(i => i.CustomerId == customer.Id)
                     .Sum(i => i.BalanceAmount);
 
-                await _customerRepository.UpdateAsync(customer);
+                await _customerRepository.UpdateCustomerBalanceAsync(invoice.CustomerId, newBalance);
             }
 
             await _invoiceRepository.UpdateAsync(invoice);

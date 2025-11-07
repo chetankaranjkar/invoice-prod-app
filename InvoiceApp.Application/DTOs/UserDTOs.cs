@@ -14,6 +14,9 @@ namespace InvoiceApp.Application.DTOs
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? Zip { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -29,6 +32,9 @@ namespace InvoiceApp.Application.DTOs
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? Zip { get; set; }
         public string? Phone { get; set; }
     }
 }

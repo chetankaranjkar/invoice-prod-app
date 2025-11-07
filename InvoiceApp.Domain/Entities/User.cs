@@ -13,10 +13,11 @@
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? Zip { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }  // Add this line
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
         public ICollection<Customer> Customers { get; set; } = new List<Customer>();
         public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
     }

@@ -24,7 +24,7 @@ if (typeof window !== 'undefined') {
   events.forEach(event => {
     document.addEventListener(event, updateActivityTime, { passive: true });
   });
-}
+};
 
 // Check for idle timeout
 const checkIdleTimeout = () => {
@@ -33,16 +33,16 @@ const checkIdleTimeout = () => {
 
   const currentTime = Date.now();
   const idleTime = currentTime - lastActivityTime;
-  const idleTimeout = 3 * 60 * 1000; // 3 minutes in milliseconds
+  const idleTimeout = 30 * 60 * 1000; // Increased to 30 minutes
 
   if (idleTime >= idleTimeout && !isHandling401) {
     console.log('⏰ Idle timeout reached');
     handleLogout();
   }
-};
+}
 
-// Check idle timeout every 30 seconds
-setInterval(checkIdleTimeout, 30000);
+// Check idle timeout every 90 seconds
+setInterval(checkIdleTimeout, 90000);
 
 const handleLogout = () => {
   if (isHandling401) return;
@@ -77,8 +77,6 @@ agent.interceptors.request.use(
     const cleanAuthToken = cleanToken(token);
 
     console.log('🔐 Token from storage:', cleanAuthToken ? 'Present' : 'Missing');
-    console.log('📤 Request Content-Type:', config.headers?.['Content-Type']);
-    console.log('📤 Is FormData:', config.data instanceof FormData);
 
     if (cleanAuthToken) {
       config.headers.Authorization = `Bearer ${cleanAuthToken}`;
@@ -122,6 +120,7 @@ agent.interceptors.response.use(
       headers: error.config?.headers
     });
 
+    // Don't logout for network errors or server errors other than 401
     if (error.response?.status === 401 && !isHandling401) {
       isHandling401 = true;
       console.log('🚫 401 Unauthorized - clearing token');
