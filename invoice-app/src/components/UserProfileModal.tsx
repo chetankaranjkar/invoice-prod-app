@@ -40,9 +40,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 accountNumber: response.data.accountNumber,
                 ifscCode: response.data.ifscCode,
                 panNumber: response.data.panNumber,
+                City: response.data.city,
+                State: response.data.state,
+                Zip: response.data.zip,
                 phone: response.data.phone,
             });
             setLogoPreview(response.data.logoUrl || '');
+            console.warn(response.data)
         } catch (err: any) {
             setError('Failed to load profile');
         }
@@ -80,41 +84,44 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     };
 
     // In the handleSubmit function, update the form data appending:
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
 
-  try {
-    // Prepare profile data
-    const profileData = {
-      name: formData.name || '',
-      businessName: formData.businessName || '',
-      gstNumber: formData.gstNumber || '',
-      address: formData.address || '',
-      bankName: formData.bankName || '',
-      accountNumber: formData.accountNumber || '',
-      ifscCode: formData.ifscCode || '',
-      panNumber: formData.panNumber || '',
-      phone: formData.phone || '',
+        try {
+            // Prepare profile data
+            const profileData = {
+                name: formData.name || '',
+                businessName: formData.businessName || '',
+                gstNumber: formData.gstNumber || '',
+                address: formData.address || '',
+                bankName: formData.bankName || '',
+                accountNumber: formData.accountNumber || '',
+                ifscCode: formData.ifscCode || '',
+                panNumber: formData.panNumber || '',
+                phone: formData.phone || '',
+                City: formData.City || '',
+                State: formData.State || 'Maharashtra',
+                Zip: formData.Zip || ''
+            };
+
+            console.log('📤 Submitting profile data:', profileData);
+            console.log('📁 Logo file:', logoFile ? `Present (${logoFile.name})` : 'Not provided');
+
+            // Use the fixed API method
+            const response = await api.user.updateProfileWithLogo(profileData, logoFile || undefined);
+
+            console.log('✅ Profile updated successfully:', response.data);
+            onProfileUpdate(response.data);
+            onClose();
+        } catch (err: any) {
+            console.error('❌ Profile update failed:', err);
+            setError(err.response?.data?.message || 'Failed to update profile');
+        } finally {
+            setLoading(false);
+        }
     };
-
-    console.log('📤 Submitting profile data:', profileData);
-    console.log('📁 Logo file:', logoFile ? `Present (${logoFile.name})` : 'Not provided');
-
-    // Use the fixed API method
-    const response = await api.user.updateProfileWithLogo(profileData, logoFile || undefined);
-    
-    console.log('✅ Profile updated successfully:', response.data);
-    onProfileUpdate(response.data);
-    onClose();
-  } catch (err: any) {
-    console.error('❌ Profile update failed:', err);
-    setError(err.response?.data?.message || 'Failed to update profile');
-  } finally {
-    setLoading(false);
-  }
-};
 
 
     if (!isOpen) return null;
@@ -270,6 +277,45 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     placeholder="+91 9876543210"
                                 />
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Pincode
+                                </label>
+                                <input
+                                    type="text"
+                                    name="Zip"
+                                    value={formData.Zip || ''}
+                                    onChange={handleInputChange}
+                                    className="input-field"
+                                    placeholder="411018"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    City
+                                </label>
+                                <input
+                                    type="text"
+                                    name="City"
+                                    value={formData.City || ''}
+                                    onChange={handleInputChange}
+                                    className="input-field"
+                                    placeholder="City"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    State
+                                </label>
+                                <input
+                                    type="text"
+                                    name="State"
+                                    value={formData.State || ''}
+                                    onChange={handleInputChange}
+                                    className="input-field"
+                                    placeholder="Maharashtra"
+                                />
+                            </div>
 
                             <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -284,6 +330,7 @@ const handleSubmit = async (e: React.FormEvent) => {
                                     placeholder="Complete business address"
                                 />
                             </div>
+
                         </div>
                     </div>
 

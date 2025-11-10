@@ -13,6 +13,10 @@ export const InvoiceCreationPage: React.FC = () => {
   const [initialPayment, setInitialPayment] = useState<number>(0);
   const [invoiceNumber, setInvoiceNumber] = useState('INV00001');
 
+  const [items, setItems] = useState<Partial<InvoiceItem>[]>([
+    { productName: '', quantity: 1, rate: 0, gstPercentage: 18 },
+  ]);
+
   useEffect(() => {
     loadCustomers();
   }, []);
@@ -24,6 +28,11 @@ export const InvoiceCreationPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to load customers:', error);
     }
+  };
+
+   // Add new item
+  const addItem = () => {
+    setItems([...items, { productName: '', quantity: 1, rate: 0, gstPercentage: 18 }]);
   };
 
   const handleInvoiceCreate = async (invoiceData: CreateInvoiceDto) => {
@@ -48,6 +57,10 @@ export const InvoiceCreationPage: React.FC = () => {
     setCustomers(prev => [...prev, customer]);
     setSelectedCustomer(customer);
   };
+
+  const handleSelectedCustomer=(id:number)=>{
+    setSelectedCustomer(customers.find(c => c.id === id) || null)
+  }
 
   // Update preview when form data changes
   const updatePreview = (data: any) => {
@@ -84,11 +97,12 @@ export const InvoiceCreationPage: React.FC = () => {
               customers={customers}
               onInvoiceCreate={handleInvoiceCreate}
               onCustomerAdded={handleCustomerAdded}
+              handleSelectedCustomer={handleSelectedCustomer}
             />
           </div>
 
           {/* Right Side - Invoice Preview */}
-          <div className='lg:col-span-2'>
+        { selectedCustomer && <div className='lg:col-span-2'>
             <InvoicePreview
               customer={selectedCustomer}
               items={invoiceItems}
@@ -98,6 +112,7 @@ export const InvoiceCreationPage: React.FC = () => {
               initialPayment={initialPayment}
             />
           </div>
+          }
         </div>
       </div>
     </div>

@@ -20,9 +20,9 @@ export interface UserProfile {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
-  City?:string;
-  State?:string;
-  Zip?:string;
+  City?: string;
+  State?: string;
+  Zip?: string;
   phone?: string;
   logoUrl?: string;
   createdAt: string;
@@ -39,87 +39,90 @@ export interface CompanyInfo {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
+  City?: string;
+  State?: string;
+  Zip?: string;
   phone?: string;
   logoUrl?: string;
 }
 
 export interface UpdateUserProfileDto {
-    name?: string;
-    businessName?: string;
-    gstNumber?: string;
-    address?: string;
-    bankName?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    panNumber?: string;     
-    City?:string;
-    State?:string;
-    Zip?:string;
-    phone?: string;
-    logo?: File;
+  name?: string;
+  businessName?: string;
+  gstNumber?: string;
+  address?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  panNumber?: string;
+  City?: string;
+  State?: string;
+  Zip?: string;
+  phone?: string;
+  logo?: File;
 }
 
 // Update existing User interface to match backend
 export interface User {
-    id: string;
-    name: string;
-    email: string;
-    businessName?: string;
-    gstNumber?: string;
-    address?: string;
-    bankName?: string;
-    accountNumber?: string;
-    ifscCode?: string;
-    panNumber?: string;     
-    City?:string;
-    State?:string;
-    Zip?:string;
-    phone?: string;
-    logoUrl?: string;
-    createdAt: string;
+  id: string;
+  name: string;
+  email: string;
+  businessName?: string;
+  gstNumber?: string;
+  address?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  panNumber?: string;
+  City?: string;
+  State?: string;
+  Zip?: string;
+  phone?: string;
+  logoUrl?: string;
+  createdAt: string;
 }
 
 export interface Customer {
-    id: number;
-    customerName: string;
-    gstNumber?: string;
-    panNumber?: string;
-    City?:string;
-    State?:string;
-    Zip?:string;
-    email?: string;
-    phone?: string;
-    billingAddress?: string;
-    totalBalance: number;
-    createdAt: string;
-     
+  id: number;
+  customerName: string;
+  gstNumber?: string;
+  panNumber?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  email?: string;
+  phone?: string;
+  billingAddress?: string;
+  totalBalance: number;
+  createdAt: string;
+
 }
 
 export interface CreateCustomerDto {
-    customerName: string;
-    gstNumber?: string;
-    email?: string;
-    phone?: string;
-    billingAddress?: string;
-    bankName?: string;
-    bankAccountNo?: string;
-    ifscCode?: string;
-     panNumber?: string;
-    City?:string;
-    State?:string;
-    Zip?:string;
+  customerName: string;
+  gstNumber?: string;
+  email?: string;
+  phone?: string;
+  billingAddress?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  ifscCode?: string;
+  panNumber?: string;
+  City?: string;
+  State?: string;
+  Zip?: string;
 }
 
 export interface InvoiceItem {
-    id?: number;
-    productName: string;
-    quantity: number;
-    rate: number;
-    amount: number;
-    gstPercentage: number;
-    gstAmount: number;
-    cgst: number;
-    sgst: number;
+  id?: number;
+  productName: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+  gstPercentage: number;
+  gstAmount: number;
+  cgst: number;
+  sgst: number;
 }
 
 export interface Invoice {
@@ -143,11 +146,11 @@ export interface Invoice {
 }
 
 export interface Payment {
-    id: number;
-    amountPaid: number;
-    paymentDate: string;
-    paymentMode?: string;
-    remarks?: string;
+  id: number;
+  amountPaid: number;
+  paymentDate: string;
+  paymentMode?: string;
+  remarks?: string;
 }
 
 export interface CreateInvoiceDto {
@@ -160,22 +163,22 @@ export interface CreateInvoiceDto {
 }
 
 export interface LoginDto {
-    email: string;
-    password: string;
+  email: string;
+  password: string;
 }
 
 export interface AuthResponse {
-    token: string;
-    userId: string;
-    email: string;
-    name: string;
-    expires: string;
+  token: string;
+  userId: string;
+  email: string;
+  name: string;
+  expires: string;
 }
 
 export interface DashboardStats {
-    totalPendingAmount: number;
-    totalCustomers: number;
-    paidCustomersCount: number;
-    unpaidCustomersCount: number;
-    recentInvoices: Invoice[];
+  totalPendingAmount: number;
+  totalCustomers: number;
+  paidCustomersCount: number;
+  unpaidCustomersCount: number;
+  recentInvoices: Invoice[];
 }

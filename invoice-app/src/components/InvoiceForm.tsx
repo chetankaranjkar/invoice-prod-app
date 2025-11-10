@@ -8,12 +8,14 @@ interface InvoiceFormProps {
   customers: Customer[];
   onInvoiceCreate: (invoiceData: CreateInvoiceDto) => void;
   onCustomerAdded: (customer: Customer) => void;
+  handleSelectedCustomer: (id: number) => void
 }
 
 export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   customers,
   onInvoiceCreate,
   onCustomerAdded,
+  handleSelectedCustomer
 }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<number>(0);
   const [dueDate, setDueDate] = useState('');
@@ -36,6 +38,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
   const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
     const updatedItems = [...items];
+
     updatedItems[index] = { ...updatedItems[index], [field]: value };
 
     if (['quantity', 'rate', 'gstPercentage'].includes(field)) {
@@ -135,6 +138,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
     onInvoiceCreate(invoiceData);
   };
 
+  const handleCustomerSelection = (id: number) => {
+    setSelectedCustomer(id);
+    handleSelectedCustomer(id);
+  };
 
   const handleCustomerAdded = (customer: Customer) => {
     onCustomerAdded(customer);
@@ -168,7 +175,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             </div>
             <select
               value={selectedCustomer}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCustomer(Number(e.target.value))}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleCustomerSelection(Number(e.target.value))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
