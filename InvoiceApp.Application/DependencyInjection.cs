@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using InvoiceApp.Application.Interfaces;
 using InvoiceApp.Application.Services;
 using AutoMapper;
@@ -15,6 +15,8 @@ namespace InvoiceApp.Application
 
             // Register Application Services
             services.AddScoped<IInvoiceService, InvoiceService>();
+            services.AddScoped<IInvoiceTemplateService, InvoiceTemplateService>();
+            services.AddScoped<IRecurringInvoiceService, RecurringInvoiceService>();
 
             return services;
         }

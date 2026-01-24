@@ -82,13 +82,12 @@ namespace InvoiceApp.Api.Controllers
         {
             try
             {
-                // Debug: Check if we have a user
                 var userId = GetCurrentUserId();
-                Console.WriteLine($"UploadLogo - UserId: {userId}");
+                _logger.LogInformation("UploadLogo called for user: {UserId}", userId);
 
                 if (userId == null)
                 {
-                    Console.WriteLine("UploadLogo - No user ID found in token");
+                    _logger.LogWarning("UploadLogo - No user ID found in token");
                     return Unauthorized("User ID not found in token");
                 }
 
@@ -117,11 +116,11 @@ namespace InvoiceApp.Api.Controllers
             try
             {
                 var userId = GetCurrentUserId();
-                Console.WriteLine($"UpdateProfileWithLogo - UserId: {userId}");
+                _logger.LogInformation("UpdateProfileWithLogo called for user: {UserId}", userId);
 
                 if (userId == null)
                 {
-                    Console.WriteLine("UpdateProfileWithLogo - No user ID found in token");
+                    _logger.LogWarning("UpdateProfileWithLogo - No user ID found in token");
                     return Unauthorized("User ID not found in token");
                 }
 

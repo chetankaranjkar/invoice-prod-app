@@ -1,4 +1,4 @@
-export type PaymentStatus = 'Unpaid' | 'Partially Paid' | 'Paid';
+export type PaymentStatus = 'Draft' | 'Sent' | 'Unpaid' | 'Partially Paid' | 'Paid';
 
 export interface CreateInvoiceDto {
   customerId: number;
@@ -9,10 +9,98 @@ export interface CreateInvoiceDto {
   initialPayment?: number;
 }
 
+export interface UpdateInvoiceDto {
+  customerId: number;
+  dueDate?: string;
+  items: Omit<InvoiceItem, 'id' | 'amount' | 'gstAmount' | 'cgst' | 'sgst'>[];
+  status?: PaymentStatus;
+}
+
+export interface InvoiceTemplateItemDto {
+  productName: string;
+  quantity: number;
+  rate: number;
+  gstPercentage: number;
+}
+
+export interface CreateInvoiceTemplateDto {
+  templateName: string;
+  description?: string;
+  items: InvoiceTemplateItemDto[];
+}
+
+export interface UpdateInvoiceTemplateDto {
+  templateName: string;
+  description?: string;
+  items: InvoiceTemplateItemDto[];
+}
+
+export interface InvoiceTemplateDto {
+  id: number;
+  templateName: string;
+  description?: string;
+  createdAt: string;
+  updatedAt?: string;
+  items: InvoiceTemplateItemDto[];
+}
+
+export interface RecurringInvoiceItemDto {
+  productName: string;
+  quantity: number;
+  rate: number;
+  gstPercentage: number;
+}
+
+export interface CreateRecurringInvoiceDto {
+  name: string;
+  customerId: number;
+  frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
+  dayOfMonth: number;
+  startDate: string;
+  endDate?: string;
+  numberOfOccurrences?: number;
+  description?: string;
+  items: RecurringInvoiceItemDto[];
+}
+
+export interface UpdateRecurringInvoiceDto {
+  name: string;
+  customerId: number;
+  frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
+  dayOfMonth: number;
+  startDate: string;
+  endDate?: string;
+  numberOfOccurrences?: number;
+  isActive: boolean;
+  description?: string;
+  items: RecurringInvoiceItemDto[];
+}
+
+export interface RecurringInvoiceDto {
+  id: number;
+  name: string;
+  customerId: number;
+  customerName: string;
+  frequency: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
+  dayOfMonth: number;
+  startDate: string;
+  endDate?: string;
+  numberOfOccurrences?: number;
+  generatedCount: number;
+  isActive: boolean;
+  lastGeneratedDate?: string;
+  nextGenerationDate?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt?: string;
+  items: RecurringInvoiceItemDto[];
+}
+
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
+  role?: string;
   businessName?: string;
   gstNumber?: string;
   address?: string;
@@ -59,6 +147,9 @@ export interface UpdateUserProfileDto {
   State?: string;
   Zip?: string;
   phone?: string;
+  invoicePrefix?: string;
+  defaultGstPercentage?: number;
+  disableQuantity?: boolean;
   logo?: File;
 }
 
@@ -93,6 +184,9 @@ export interface Customer {
   email?: string;
   phone?: string;
   billingAddress?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  ifscCode?: string;
   totalBalance: number;
   createdAt: string;
 
@@ -130,6 +224,7 @@ export interface Invoice {
   invoiceNumber: string;
   customerId: number;
   customerName?: string;
+  userName?: string; // Name of the user who created the invoice (for admin view)
   invoiceDate: string;
   dueDate?: string;
   totalAmount: number;
@@ -138,7 +233,8 @@ export interface Invoice {
   cgst: number;
   sgst: number;
   grandTotal: number;
-  paidAmount: number;
+  paidAmount: number; // Actual payment received (excluding wave)
+  waveAmount: number; // Total wave off/discount amount
   balanceAmount: number;
   status: PaymentStatus; // Use the new type
   items: InvoiceItem[];
@@ -148,6 +244,7 @@ export interface Invoice {
 export interface Payment {
   id: number;
   amountPaid: number;
+  waveAmount: number; // Wave off amount
   paymentDate: string;
   paymentMode?: string;
   remarks?: string;
@@ -181,4 +278,32 @@ export interface DashboardStats {
   paidCustomersCount: number;
   unpaidCustomersCount: number;
   recentInvoices: Invoice[];
+}
+
+export interface UserListDto {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  businessName?: string;
+  createdAt: string;
+  createdByName?: string; // Name of the user who created this user
+}
+
+export interface CreateUserDto {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+  businessName?: string;
+  gstNumber?: string;
+  address?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  ifscCode?: string;
+  panNumber?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  phone?: string;
 }

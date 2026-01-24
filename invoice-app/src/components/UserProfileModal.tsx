@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Building, Upload, Save, Trash2 } from 'lucide-react';
 import type { UserProfile, UpdateUserProfileDto } from '../types';
 import { api } from '../services/agent';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface UserProfileModalProps {
     isOpen: boolean;
@@ -14,7 +15,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     onClose,
     onProfileUpdate,
 }) => {
-    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const { themeColors } = useTheme();
+    const [, setProfile] = useState<UserProfile | null>(null);
     const [formData, setFormData] = useState<UpdateUserProfileDto>({});
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string>('');
@@ -37,16 +39,33 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 gstNumber: response.data.gstNumber,
                 address: response.data.address,
                 bankName: response.data.bankName,
-                accountNumber: response.data.accountNumber,
+                accountNumber: response.data.bankAccountNo || response.data.accountNumber || '', // Backend returns bankAccountNo
                 ifscCode: response.data.ifscCode,
                 panNumber: response.data.panNumber,
                 City: response.data.city,
                 State: response.data.state,
                 Zip: response.data.zip,
                 phone: response.data.phone,
+                invoicePrefix: response.data.invoicePrefix || 'INV',
+                defaultGstPercentage: response.data.defaultGstPercentage ?? 18,
+                disableQuantity: response.data.disableQuantity || false,
             });
-            setLogoPreview(response.data.logoUrl || '');
-            console.warn(response.data)
+            // Process logoUrl to ensure it works in Docker (use direct API port)
+            let logoUrl = response.data.logoUrl || '';
+            if (logoUrl && logoUrl.trim() !== '') {
+                // If it's a relative path starting with /uploads/, prepend direct API URL
+                if (logoUrl.startsWith('/uploads/') && !logoUrl.startsWith('http://') && !logoUrl.startsWith('https://')) {
+                    logoUrl = `http://localhost:5001${logoUrl}`;
+                }
+                // Fix old HTTPS URLs
+                else if (logoUrl.includes('https://localhost:7001')) {
+                    logoUrl = logoUrl.replace('https://localhost:7001', 'http://localhost:5001');
+                }
+                else if (logoUrl.includes('https://localhost')) {
+                    logoUrl = logoUrl.replace('https://localhost', 'http://localhost:5001');
+                }
+            }
+            setLogoPreview(logoUrl);
         } catch (err: any) {
             setError('Failed to load profile');
         }
@@ -97,22 +116,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 gstNumber: formData.gstNumber || '',
                 address: formData.address || '',
                 bankName: formData.bankName || '',
-                accountNumber: formData.accountNumber || '',
+                bankAccountNo: formData.accountNumber || '', // Backend expects bankAccountNo
                 ifscCode: formData.ifscCode || '',
                 panNumber: formData.panNumber || '',
                 phone: formData.phone || '',
                 City: formData.City || '',
                 State: formData.State || 'Maharashtra',
-                Zip: formData.Zip || ''
+                Zip: formData.Zip || '',
+                invoicePrefix: formData.invoicePrefix || 'INV',
+                defaultGstPercentage: formData.defaultGstPercentage ?? 18,
+                disableQuantity: formData.disableQuantity || false
             };
-
-            console.log('📤 Submitting profile data:', profileData);
-            console.log('📁 Logo file:', logoFile ? `Present (${logoFile.name})` : 'Not provided');
 
             // Use the fixed API method
             const response = await api.user.updateProfileWithLogo(profileData, logoFile || undefined);
 
-            console.log('✅ Profile updated successfully:', response.data);
             onProfileUpdate(response.data);
             onClose();
         } catch (err: any) {
@@ -127,8 +145,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[95vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b">
                     <div className="flex items-center">
@@ -138,6 +156,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <button
                         onClick={onClose}
                         className="text-gray-400 hover:text-gray-600 transition-colors"
+                        title="Close"
+                        aria-label="Close modal"
                     >
                         <X className="h-6 w-6" />
                     </button>
@@ -146,7 +166,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-6 space-y-8">
                     {error && (
-                        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+                        <div className={`${themeColors.dangerLight} border border-red-200 text-red-600 px-4 py-3 rounded`}>
                             {error}
                         </div>
                     )}
@@ -155,7 +175,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <div className="border-b pb-8">
                         <h3 className="text-lg font-medium text-gray-900 mb-4">Company Logo</h3>
                         <div className="flex items-start space-x-6">
-                            <div className="flex-shrink-0">
+                            <div className="shrink-0">
                                 <div className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
                                     {logoPreview ? (
                                         <div className="relative">
@@ -167,7 +187,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={removeLogo}
-                                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                                className={`absolute -top-2 -right-2 ${themeColors.danger} text-white rounded-full p-1 ${themeColors.dangerHover}`}
+                                                title="Remove logo"
+                                                aria-label="Remove logo"
                                             >
                                                 <Trash2 className="h-3 w-3" />
                                             </button>
@@ -190,7 +212,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                         onChange={handleLogoChange}
                                         className="hidden"
                                     />
-                                    <span className="cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 inline-flex items-center">
+                                    <span className={`cursor-pointer ${themeColors.info} text-white px-4 py-2 rounded-md ${themeColors.infoHover} inline-flex items-center`}>
                                         <Upload className="h-4 w-4 mr-2" />
                                         Choose Logo
                                     </span>
@@ -379,6 +401,70 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                     placeholder="IFSC code"
                                 />
                             </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Invoice Prefix *
+                                </label>
+                                <input
+                                    type="text"
+                                    name="invoicePrefix"
+                                    value={formData.invoicePrefix || 'INV'}
+                                    onChange={handleInputChange}
+                                    className="input-field"
+                                    placeholder="INV"
+                                    required
+                                    maxLength={20}
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    Your invoices will be numbered like: {formData.invoicePrefix || 'INV'}00001, {formData.invoicePrefix || 'INV'}00002, etc.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Default GST Percentage *
+                                </label>
+                                <input
+                                    type="number"
+                                    name="defaultGstPercentage"
+                                    value={formData.defaultGstPercentage ?? 18}
+                                    onChange={(e) => {
+                                        const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                        setFormData(prev => ({ 
+                                            ...prev, 
+                                            defaultGstPercentage: value !== undefined ? value : 18 
+                                        }));
+                                    }}
+                                    className="input-field"
+                                    placeholder="18"
+                                    required
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                    This GST percentage will be used as default when adding items to invoices.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        name="disableQuantity"
+                                        checked={formData.disableQuantity || false}
+                                        onChange={(e) => setFormData(prev => ({ ...prev, disableQuantity: e.target.checked }))}
+                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <span className="ml-2 text-sm font-medium text-gray-700">
+                                        Disable Quantity Field (Default: 1)
+                                    </span>
+                                </label>
+                                <p className="mt-1 text-xs text-gray-500 ml-6">
+                                    When enabled, quantity field will be hidden in invoice items and default value of 1 will be used.
+                                </p>
+                            </div>
                         </div>
                     </div>
 
@@ -394,7 +480,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         <button
                             type="submit"
                             disabled={loading}
-                            className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className={`flex items-center px-6 py-2 ${themeColors.info} text-white rounded-md ${themeColors.infoHover} disabled:opacity-50 disabled:cursor-not-allowed transition-colors`}
                         >
                             <Save className="h-4 w-4 mr-2" />
                             {loading ? 'Saving...' : 'Save Changes'}

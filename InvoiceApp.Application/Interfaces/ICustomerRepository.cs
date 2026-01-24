@@ -11,6 +11,7 @@ namespace InvoiceApp.Application.Interfaces
     public interface ICustomerRepository
     {
         Task<CustomerProfileDto?> GetCustomerByIdAsync(int customerId, Guid userId);
+        Task<CustomerProfileDto?> GetCustomerByIdAsync(int customerId, Guid userId, string userRole); // Overload for role-based access
         Task<List<CustomerProfileDto>> GetCustomersByUserIdAsync(Guid userId);
         Task<CustomerProfileDto> CreateCustomerAsync(Guid userId, CreateCustomerDto createDto);
         Task<CustomerProfileDto?> UpdateCustomerAsync(int customerId, Guid userId, UpdateCustomerDto updateDto);

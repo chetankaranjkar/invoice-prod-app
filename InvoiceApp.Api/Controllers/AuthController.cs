@@ -33,12 +33,24 @@ namespace InvoiceApp.Api.Controllers
         [HttpPost("register")]
         public async Task<ActionResult<AuthResponseDto>> Register(RegisterDto registerDto)
         {
-            var result = await _authService.RegisterAsync(registerDto);
+            try
+            {
+                var result = await _authService.RegisterAsync(registerDto);
 
-            if (result == null)
-                return BadRequest("User with this email already exists");
+                if (result == null)
+                    return BadRequest("Failed to register user");
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Handle duplicate email
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "An error occurred while registering user");
+            }
         }
 
         [HttpGet("me")]

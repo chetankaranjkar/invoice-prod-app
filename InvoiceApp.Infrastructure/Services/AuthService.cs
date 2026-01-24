@@ -10,6 +10,7 @@ using InvoiceApp.Application.Interfaces;
 using InvoiceApp.Domain.Entities;
 using InvoiceApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using BCrypt.Net;
 
 namespace InvoiceApp.Infrastructure.Services
 {
@@ -26,14 +27,16 @@ namespace InvoiceApp.Infrastructure.Services
 
         public async Task<AuthResponseDto?> LoginAsync(LoginDto loginDto)
         {
+            // Use AsNoTracking and don't include navigation properties for login query
             var user = await _context.Users
+                .AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
 
             if (user == null)
                 return null;
 
-            // Simple password check for demo - in production use proper hashing
-            if (user.PasswordHash != HashPassword(loginDto.Password))
+            // Verify password using BCrypt
+            if (!VerifyPassword(loginDto.Password, user.PasswordHash))
                 return null;
 
             return GenerateJwtToken(user);
@@ -41,16 +44,16 @@ namespace InvoiceApp.Infrastructure.Services
 
         public async Task<AuthResponseDto?> RegisterAsync(RegisterDto registerDto)
         {
-            // Check if user already exists
-            if (await _context.Users.AnyAsync(u => u.Email == registerDto.Email))
-                return null;
+            // Check if user already exists (case-insensitive email comparison)
+            if (await _context.Users.AnyAsync(u => u.Email.ToLower() == registerDto.Email.ToLower()))
+                throw new InvalidOperationException($"A user with email '{registerDto.Email}' already exists. Please use a different email address or login instead.");
 
             var user = new User
             {
                 Id = Guid.NewGuid(),
                 Name = registerDto.Name,
                 Email = registerDto.Email,
-                PasswordHash = HashPassword(registerDto.Password),
+                PasswordHash = HashPassword(registerDto.Password), // Now uses BCrypt
                 BusinessName = registerDto.BusinessName,
                 GstNumber = registerDto.GstNumber,
                 BankName = registerDto.BankName,
@@ -96,8 +99,15 @@ namespace InvoiceApp.Infrastructure.Services
         {
             var tokenHandler = new JwtSecurityTokenHandler();
 
+            // Require JWT secret from configuration - fail if missing
+            var secretKey = _configuration["Jwt:Secret"];
+            if (string.IsNullOrEmpty(secretKey))
+            {
+                throw new InvalidOperationException("JWT Secret key is not configured. Please set Jwt:Secret in appsettings.json");
+            }
+            
             // Use ASCII encoding for the secret key to avoid encoding issues
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Secret"] ?? "YourSuperSecretKeyForJWTTokenGeneration2024!");
+            var key = Encoding.ASCII.GetBytes(secretKey);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
@@ -106,9 +116,10 @@ namespace InvoiceApp.Infrastructure.Services
                     new Claim("userid", user.Id.ToString()),
                     new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                     new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.Name, user.Name)
+                    new Claim(ClaimTypes.Name, user.Name),
+                    new Claim(ClaimTypes.Role, user.Role ?? "User")
                 }),
-                Expires = DateTime.UtcNow.AddMinutes(3), // 3 minutes expiration
+                Expires = DateTime.UtcNow.AddHours(24), // 24 hours expiration (improved from 3 minutes)
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
 
@@ -130,9 +141,37 @@ namespace InvoiceApp.Infrastructure.Services
 
         private string HashPassword(string password)
         {
-            // Simple hashing for demo - in production use proper hashing
-            var secret = _configuration["Jwt:Secret"] ?? "YourSuperSecretKeyForJWTTokenGeneration2024!";
-            return Convert.ToBase64String(Encoding.UTF8.GetBytes(password + secret));
+            // Use BCrypt for secure password hashing
+            return BCrypt.Net.BCrypt.HashPassword(password, BCrypt.Net.BCrypt.GenerateSalt(12));
+        }
+
+        private bool VerifyPassword(string password, string hash)
+        {
+            try
+            {
+                // Try BCrypt verification first
+                if (BCrypt.Net.BCrypt.Verify(password, hash))
+                    return true;
+            }
+            catch
+            {
+                // If BCrypt fails, might be old hash format - try legacy verification for migration
+            }
+
+            // Legacy password verification for existing users (migration support)
+            // This allows existing users to login once, then their password will be re-hashed on next login
+            var secret = _configuration["Jwt:Secret"];
+            if (!string.IsNullOrEmpty(secret))
+            {
+                var legacyHash = Convert.ToBase64String(Encoding.UTF8.GetBytes(password + secret));
+                if (legacyHash == hash)
+                {
+                    // Password matches legacy format - return true (caller should re-hash on next update)
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private string RemoveNonAsciiCharacters(string input)

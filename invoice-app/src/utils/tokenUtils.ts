@@ -4,14 +4,18 @@ export const validateToken = (token: string): boolean => {
   // Check if token contains only ASCII characters
   const isAscii = /^[\x00-\x7F]*$/.test(token);
   if (!isAscii) {
-    console.error('❌ Token contains non-ASCII characters');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Token contains non-ASCII characters');
+    }
     return false;
   }
   
   // Check token structure (basic JWT validation)
   const parts = token.split('.');
   if (parts.length !== 3) {
-    console.error('❌ Invalid JWT token structure');
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Invalid JWT token structure');
+    }
     return false;
   }
   
@@ -21,13 +25,17 @@ export const validateToken = (token: string): boolean => {
     
     // Check expiration
     if (payload.exp && Date.now() >= payload.exp * 1000) {
-      console.error('❌ Token has expired');
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ Token has expired');
+      }
       return false;
     }
     
     return true;
   } catch (error) {
-    console.error('❌ Failed to parse token payload:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Failed to parse token payload:', error);
+    }
     return false;
   }
 };
@@ -42,7 +50,9 @@ export const getStoredToken = (): string | null => {
   
   const cleanedToken = cleanToken(token);
   if (cleanedToken !== token) {
-    console.warn('⚠️ Token contained non-ASCII characters, cleaned');
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('⚠️ Token contained non-ASCII characters, cleaned');
+    }
     localStorage.setItem('authToken', cleanedToken);
   }
   

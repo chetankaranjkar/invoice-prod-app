@@ -34,6 +34,11 @@ namespace InvoiceApp.Infrastructure.Services
             return _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value;
         }
 
+        public string? GetCurrentUserRole()
+        {
+            return _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Role)?.Value;
+        }
+
         public bool IsAuthenticated()
         {
             return _httpContextAccessor.HttpContext?.User?.Identity?.IsAuthenticated ?? false;

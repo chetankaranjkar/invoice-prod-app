@@ -5,7 +5,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["vite/client", "react", "react-dom"],  // Add react and react-dom here
+    "types": ["vite/client", "react", "react-dom", "node"],  // Add react, react-dom, and node here
     "skipLibCheck": true,
 
     /* Bundler mode */

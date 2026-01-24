@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -20,7 +20,8 @@ namespace InvoiceApp.Domain.Entities
         public decimal Cgst { get; set; }
         public decimal Sgst { get; set; }
         public decimal GrandTotal { get; set; }
-        public decimal PaidAmount { get; set; } = 0m;
+        public decimal PaidAmount { get; set; } = 0m; // Actual payment received (excluding wave)
+        public decimal WaveAmount { get; set; } = 0m; // Total wave off/discount amount
         public decimal BalanceAmount { get; set; } = 0m;
         public string Status { get; set; } = "Unpaid";
 

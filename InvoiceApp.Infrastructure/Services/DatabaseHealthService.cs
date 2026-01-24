@@ -20,8 +20,14 @@ namespace InvoiceApp.Infrastructure.Services
             {
                 return await _context.Database.CanConnectAsync();
             }
-            catch
+            catch (Exception ex)
             {
+                // Log the exception for debugging
+                Console.WriteLine($"[DatabaseHealth] Connection failed: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"[DatabaseHealth] Inner exception: {ex.InnerException.Message}");
+                }
                 return false;
             }
         }
@@ -41,18 +47,43 @@ namespace InvoiceApp.Infrastructure.Services
 
         public async Task<string> GetDatabaseStatusAsync()
         {
-            var canConnect = await IsDatabaseConnectedAsync();
-            if (!canConnect)
-                return "❌ Database connection failed";
+            try
+            {
+                var canConnect = await IsDatabaseConnectedAsync();
+                if (!canConnect)
+                {
+                    // Try to get more details about the connection failure
+                    try
+                    {
+                        await _context.Database.CanConnectAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        var errorMsg = ex.InnerException?.Message ?? ex.Message;
+                        // Truncate long error messages
+                        if (errorMsg.Length > 100)
+                            errorMsg = errorMsg.Substring(0, 100) + "...";
+                        return $"❌ Database connection failed: {errorMsg}";
+                    }
+                    return "❌ Database connection failed - Check if SQL Server container is running";
+                }
 
-            var isCreated = await IsDatabaseCreatedAsync();
-            if (!isCreated)
-                return "⚠️ Database connected but not fully created";
+                var isCreated = await IsDatabaseCreatedAsync();
+                if (!isCreated)
+                    return "⚠️ Database connected but not fully created (migrations may be pending)";
 
-            var userCount = await _context.Users.CountAsync();
-            var invoiceCount = await _context.Invoices.CountAsync();
+                var userCount = await _context.Users.CountAsync();
+                var invoiceCount = await _context.Invoices.CountAsync();
 
-            return $"✅ Database healthy - Users: {userCount}, Invoices: {invoiceCount}";
+                return $"✅ Database healthy - Users: {userCount}, Invoices: {invoiceCount}";
+            }
+            catch (Exception ex)
+            {
+                var errorMsg = ex.InnerException?.Message ?? ex.Message;
+                if (errorMsg.Length > 100)
+                    errorMsg = errorMsg.Substring(0, 100) + "...";
+                return $"❌ Health check error: {errorMsg}";
+            }
         }
     }
 }

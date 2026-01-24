@@ -37,9 +37,11 @@ namespace InvoiceApp.Api.Controllers
         public async Task<ActionResult<CustomerProfileDto>> GetCustomer(int id)
         {
             var userId = _userContext.GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole)) return Unauthorized();
 
-            var customer = await _customerService.GetCustomerByIdAsync(id, userId.Value);
+            // Try to get customer - for Admin/MasterUser, also check if customer is used in accessible invoices
+            var customer = await _customerService.GetCustomerByIdAsync(id, userId.Value, userRole);
             if (customer == null) return NotFound();
 
             return Ok(customer);
@@ -49,7 +51,15 @@ namespace InvoiceApp.Api.Controllers
         public async Task<ActionResult<CustomerProfileDto>> CreateCustomer(CreateCustomerDto createDto)
         {
             var userId = _userContext.GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole))
+                return Unauthorized();
+
+            // MasterUser cannot create customers - they can only manage admins
+            if (userRole == "MasterUser")
+            {
+                return Forbid("MasterUser cannot create customers. Only Admin and User roles can create customers.");
+            }
 
             var customer = await _customerService.CreateCustomerAsync(userId.Value, createDto);
             return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);

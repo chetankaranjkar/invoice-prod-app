@@ -77,6 +77,16 @@ namespace InvoiceApp.Infrastructure.Services
             if (!string.IsNullOrEmpty(updateDto.Zip))
                 user.Zip = updateDto.Zip;
 
+            if (!string.IsNullOrEmpty(updateDto.InvoicePrefix))
+                user.InvoicePrefix = updateDto.InvoicePrefix;
+
+            // Update DefaultGstPercentage if provided
+            if (updateDto.DefaultGstPercentage.HasValue)
+                user.DefaultGstPercentage = updateDto.DefaultGstPercentage.Value;
+
+            // Update DisableQuantity if provided
+            if (updateDto.DisableQuantity.HasValue)
+                user.DisableQuantity = updateDto.DisableQuantity.Value;
 
             user.UpdatedAt = DateTime.UtcNow;
 
@@ -121,17 +131,9 @@ namespace InvoiceApp.Infrastructure.Services
             }
 
             // Update user's logo URL
-            var request = _httpContextAccessor.HttpContext?.Request;
-            if (request != null)
-            {
-                var baseUrl = $"{request.Scheme}://{request.Host}";
-                user.LogoUrl = $"{baseUrl}/uploads/logos/{fileName}";
-            }
-            else
-            {
-                // Fallback for development
-                user.LogoUrl = $"/uploads/logos/{fileName}";
-            }
+            // Always use relative path - nginx/frontend will proxy /uploads/ to API
+            // This works in both development and Docker environments
+            user.LogoUrl = $"/uploads/logos/{fileName}";
 
             user.UpdatedAt = DateTime.UtcNow;
 

@@ -1,0 +1,93 @@
+services:
+  # SQL Server Database
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: invoiceapp-db
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Password123
+      - MSSQL_PID=Express
+    ports:
+      - "1434:1433" # External port 1434 maps to internal port 1433
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - shared_backups:/var/opt/mssql/backup
+    networks:
+      - invoiceapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/1433' 2>/dev/null || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+
+  # API Backend
+  api:
+    build:
+      context: .
+      dockerfile: InvoiceApp.Api/Dockerfile
+    container_name: invoiceapp-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - CONNECTION_STRING=Server=sqlserver,1433;Database=InvoiceApp;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=true;MultipleActiveResultSets=true;Connect Timeout=60;Command Timeout=60;Pooling=true
+      - JWT__SECRET=YourSuperSecretKeyForJWTTokenGeneration2024!MakeThisVeryLongAndSecure!
+      - CORS__ALLOWEDORIGINS__0=http://invoiceapp.local:3000
+      - CORS__ALLOWEDORIGINS__1=http://localhost:3000
+      - CORS__ALLOWEDORIGINS__2=http://frontend
+      - CORS__ALLOWEDORIGINS__3=http://localhost
+    ports:
+      - "5000:8080"
+    volumes:
+      - api_uploads:/app/wwwroot/uploads
+      - api_backups:/app/wwwroot/backups
+      - shared_backups:/app/wwwroot/backups/shared
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    networks:
+      - invoiceapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./invoice-app
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api/
+    container_name: invoiceapp-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - invoiceapp-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  invoiceapp-network:
+    driver: bridge
+
+volumes:
+  sqlserver_data:
+    driver: local
+  api_uploads:
+    driver: local
+  api_backups:
+    driver: local
+  shared_backups:
+    driver: local

@@ -7,6 +7,7 @@ namespace InvoiceApp.Application.Interfaces
         Guid? GetCurrentUserId();
         string? GetCurrentUserEmail();
         string? GetCurrentUserName();
+        string? GetCurrentUserRole();
         bool IsAuthenticated();
     }
 }

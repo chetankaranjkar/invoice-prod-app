@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useIdleTimeout } from '../hooks/useIdleTimeout';
-import { LogOut, AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 interface AutoLogoutProps {
   onLogout: () => void;
@@ -19,7 +19,6 @@ export const AutoLogout: React.FC<AutoLogoutProps> = ({
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleTimeout = () => {
-    console.log('🕒 Session timeout due to inactivity');
     onLogout();
   };
 

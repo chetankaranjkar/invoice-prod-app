@@ -1,61 +1,35 @@
-# =========================
-# .gitignore for .NET + Node (React)
-# =========================
+# Docker override files (may contain secrets)
+docker-compose.override.yml
 
-# Visual Studio
-.vs/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
+# Environment files
+.env
+.env.local
+.env.*.local
 
 # Build outputs
 bin/
 obj/
-publish/
-artifacts/
-
-# Rider
-.idea/
-
-# npm / node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 dist/
 build/
 
-# React / front-end
-invoice-app/build/
-invoice-app/.env
-/invoice-app/.cache
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Logs
 *.log
+logs/
 
-# OS
-Thumbs.db
-.DS_Store
-
-# User secrets (.NET)
-secrets.json
-appsettings.Development.json
-
-# Local DB / SQLite / EF?
-*.mdf
-*.ldf
-*.sqlite
-
-# VS Code (if used)
-.vscode/
-
-# Others you may want
-*.zip
-*.7z
-*.tar.gz
-
-# If you use JetBrains:
-.idea/
-
-# Git LFS: large files would be tracked explicitly
+# Misc
+*.user
+*.suo
+*.cache

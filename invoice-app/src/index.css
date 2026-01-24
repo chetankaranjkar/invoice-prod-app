@@ -1,1 +1,111 @@
 @import "tailwindcss";
+
+/* Hostania Font */
+@font-face {
+    font-family: 'Hostania';
+    src: url('/fonts/Hostania.woff2') format('woff2'),
+        url('/fonts/Hostania.woff') format('woff'),
+        url('/fonts/Hostania.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+.font-hostania {
+    font-family: 'Hostania', serif;
+}
+
+@media print {
+    .invoice-header {
+        padding-top: 0 !important;
+    }
+
+    .invoice-header h1 {
+        margin: 0 0 4px 0 !important;
+        padding: 0 !important;
+    }
+
+    .invoice-logo {
+        min-height: 0 !important;
+        height: 35mm !important;
+        align-items: flex-start !important;
+    }
+
+    .invoice-table {
+        min-height: 30vh !important;
+        height: auto !important;
+        margin-left: 0.5vw !important;
+        margin-right: 0.5vw !important;
+        width: calc(100% - 1vw) !important;
+    }
+
+    .invoice-table tbody {
+        min-height: 0 !important;
+        height: auto !important;
+    }
+
+    .invoice-table tbody tr {
+        height: auto !important;
+    }
+
+    .invoice-signature {
+        margin-bottom: 6mm !important;
+    }
+}
+
+.pdf-export .invoice-header {
+    padding-top: 0 !important;
+}
+
+.pdf-export .invoice-header h1 {
+    margin: 0 0 4px 0 !important;
+    padding: 0 !important;
+}
+
+.pdf-export .invoice-logo {
+    min-height: 0 !important;
+    height: 30mm !important;
+    align-items: flex-start !important;
+}
+
+.pdf-export .invoice-table {
+    min-height: 30vh !important;
+    height: auto !important;
+    margin-left: 0.5vw !important;
+    margin-right: 0.5vw !important;
+    width: calc(100% - 1vw) !important;
+}
+
+.pdf-export .invoice-table tbody {
+    min-height: 0 !important;
+    height: auto !important;
+    width: calc(100% - 1vw) !important;
+}
+
+.pdf-export .invoice-table tbody tr {
+    height: auto !important;
+}
+
+.pdf-export .invoice-table th,
+.pdf-export .invoice-table td {
+    vertical-align: middle !important;
+}
+
+.pdf-export .invoice-table thead th {
+    padding-top: 0.5mm !important;
+    padding-bottom: 1.5mm !important;
+    line-height: 1.2 !important;
+    height: 8mm !important;
+}
+
+.pdf-export .invoice-footer {
+    margin-top: 6px !important;
+}
+
+.pdf-export .amount-in-words hr {
+    margin: 6px 0 !important;
+}
+
+.pdf-export .invoice-signature {
+    margin-bottom: 6mm !important;
+}
