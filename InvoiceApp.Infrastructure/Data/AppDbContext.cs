@@ -19,6 +19,7 @@ namespace InvoiceApp.Infrastructure.Data
         public DbSet<InvoiceTemplateItem> InvoiceTemplateItems { get; set; }
         public DbSet<RecurringInvoice> RecurringInvoices { get; set; }
         public DbSet<RecurringInvoiceItem> RecurringInvoiceItems { get; set; }
+        public DbSet<InvoiceLayoutConfig> InvoiceLayoutConfigs { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -53,9 +54,17 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(u => u.BankAccountNo).HasMaxLength(50);
                 entity.Property(u => u.IfscCode).HasMaxLength(20);
                 entity.Property(u => u.PanNumber).HasMaxLength(50);  // Add this
+                entity.Property(u => u.MembershipNo).HasMaxLength(100);
+                entity.Property(u => u.GstpNumber).HasMaxLength(50);
                 entity.Property(u => u.Phone).HasMaxLength(20);     // Add this
                 entity.Property(u => u.LogoUrl).HasMaxLength(500);  // Add this
                 entity.Property(u => u.Address).HasMaxLength(1000); // Add this
+                entity.Property(u => u.HeaderLogoBgColor).HasMaxLength(20);
+                entity.Property(u => u.AddressSectionBgColor).HasMaxLength(20);
+                entity.Property(u => u.HeaderLogoTextColor).HasMaxLength(20);
+                entity.Property(u => u.AddressSectionTextColor).HasMaxLength(20);
+                entity.Property(u => u.GpayNumber).HasMaxLength(30);
+                entity.Property(u => u.TaxPractitionerTitle).HasMaxLength(100);
                 entity.Property(u => u.InvoicePrefix).HasMaxLength(20); // Invoice prefix
                 entity.Property(u => u.DefaultGstPercentage).HasPrecision(5, 2).HasDefaultValue(18); // Default GST percentage
                 entity.Property(u => u.DisableQuantity).HasDefaultValue(false); // Disable quantity field
@@ -249,6 +258,28 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.HasOne(ti => ti.Template)
                       .WithMany(t => t.TemplateItems)
                       .HasForeignKey(ti => ti.TemplateId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // InvoiceLayoutConfig configuration
+            modelBuilder.Entity<InvoiceLayoutConfig>(entity =>
+            {
+                entity.HasKey(l => l.Id);
+                entity.Property(l => l.Name).IsRequired().HasMaxLength(200);
+                entity.Property(l => l.Description).HasMaxLength(500);
+                entity.Property(l => l.ConfigJson).IsRequired().HasColumnType("nvarchar(max)");
+                entity.Property(l => l.IsDefault).HasDefaultValue(false);
+
+                entity.HasIndex(l => new { l.UserId, l.Name })
+                      .IsUnique()
+                      .HasDatabaseName("IX_InvoiceLayoutConfigs_UserId_Name");
+
+                entity.HasIndex(l => new { l.UserId, l.IsDefault })
+                      .HasDatabaseName("IX_InvoiceLayoutConfigs_UserId_IsDefault");
+
+                entity.HasOne(l => l.User)
+                      .WithMany()
+                      .HasForeignKey(l => l.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

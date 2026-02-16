@@ -23,6 +23,63 @@ export interface InvoiceTemplateItemDto {
   gstPercentage: number;
 }
 
+export type InvoiceSectionType = 'Header' | 'SellerInfo' | 'BuyerInfo' | 'ItemsTable' | 'Totals' | 'Footer' | 'StaticText';
+export type InvoiceSectionPosition = 'left' | 'center' | 'right';
+export type InvoiceSectionAlignment = 'start' | 'center' | 'end';
+
+export interface InvoiceLayoutSectionConfig {
+  id: string;
+  type: InvoiceSectionType;
+  order: number;
+  width: number;
+  position: InvoiceSectionPosition;
+  alignment: InvoiceSectionAlignment;
+  visible?: boolean;
+  content?: string;
+  styles?: {
+    padding?: string;
+    margin?: string;
+    height?: string;
+    minHeight?: string;
+  };
+}
+
+export interface InvoiceLayoutConfig {
+  version: string;
+  grid: {
+    columns: number;
+    gap?: string;
+  };
+  sections: InvoiceLayoutSectionConfig[];
+}
+
+export interface InvoiceLayoutConfigDto {
+  id: number;
+  name: string;
+  description?: string;
+  config: InvoiceLayoutConfig;
+  configJson?: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateInvoiceLayoutConfigDto {
+  name: string;
+  description?: string;
+  config: InvoiceLayoutConfig;
+  configJson?: string;
+  isDefault: boolean;
+}
+
+export interface UpdateInvoiceLayoutConfigDto {
+  name: string;
+  description?: string;
+  config: InvoiceLayoutConfig;
+  configJson?: string;
+  isDefault: boolean;
+}
+
 export interface CreateInvoiceTemplateDto {
   templateName: string;
   description?: string;
@@ -106,13 +163,28 @@ export interface UserProfile {
   address?: string;
   bankName?: string;
   accountNumber?: string;
+  bankAccountNo?: string;
   ifscCode?: string;
   panNumber?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
   City?: string;
   State?: string;
   Zip?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
   phone?: string;
   logoUrl?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  gpayNumber?: string;
+  taxPractitionerTitle?: string;
+  defaultGstPercentage?: number;
+  disableQuantity?: boolean;
+  invoicePrefix?: string;
   createdAt: string;
 }
 
@@ -127,11 +199,19 @@ export interface CompanyInfo {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
   City?: string;
   State?: string;
   Zip?: string;
   phone?: string;
   logoUrl?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  gpayNumber?: string;
+  taxPractitionerTitle?: string;
 }
 
 export interface UpdateUserProfileDto {
@@ -143,10 +223,18 @@ export interface UpdateUserProfileDto {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
   City?: string;
   State?: string;
   Zip?: string;
   phone?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  gpayNumber?: string;
+  taxPractitionerTitle?: string;
   invoicePrefix?: string;
   defaultGstPercentage?: number;
   disableQuantity?: boolean;
@@ -165,11 +253,18 @@ export interface User {
   accountNumber?: string;
   ifscCode?: string;
   panNumber?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
   City?: string;
   State?: string;
   Zip?: string;
   phone?: string;
   logoUrl?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  gpayNumber?: string;
   createdAt: string;
 }
 

@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { DashboardStats } from '../components/DashboardStats';
 import { InvoicePreview } from '../components/InvoicePreview';
+import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
+import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import { api } from '../services/agent';
-import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus } from '../types';
+import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { X, Download, Edit, Trash2, Copy } from 'lucide-react';
+import { X, Download, Edit, Trash2, Copy, Printer } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTheme } from '../contexts/ThemeContext';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 export const DashboardPage: React.FC = () => {
   const { themeColors } = useTheme();
@@ -32,11 +36,15 @@ export const DashboardPage: React.FC = () => {
   const [loadingInvoiceDetails, setLoadingInvoiceDetails] = useState(false);
   const [userRole, setUserRole] = useState<string>('User');
   const [businessName, setBusinessName] = useState<string>('');
+  const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
+  const previewRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadDashboardStats();
     loadUserRole();
     loadBusinessName();
+    loadInvoiceLayouts();
   }, []);
 
   // Update selected year when invoices are loaded
@@ -72,6 +80,22 @@ export const DashboardPage: React.FC = () => {
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to load business name:', error);
+      }
+    }
+  };
+
+  const loadInvoiceLayouts = async () => {
+    try {
+      const response = await api.invoiceLayouts.getList();
+      const layouts = response.data || [];
+      setLayoutConfigs(layouts);
+      const defaultLayout = layouts.find((layout: InvoiceLayoutConfigDto) => layout.isDefault);
+      if (defaultLayout) {
+        setSelectedLayoutId(String(defaultLayout.id));
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load invoice layouts:', error);
       }
     }
   };
@@ -551,6 +575,7 @@ export const DashboardPage: React.FC = () => {
       if (customer) {
         setSelectedInvoice(fullInvoice);
         setSelectedCustomer(customer);
+        setSelectedLayoutId('static');
       } else {
         alert('Unable to load customer information for this invoice.');
       }
@@ -564,6 +589,124 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handlePrintInvoice = () => {
+    if (!previewRef.current) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print the invoice');
+      return;
+    }
+
+    const previewClone = previewRef.current.cloneNode(true) as HTMLElement;
+    const styles = Array.from(document.styleSheets)
+      .map(sheet => {
+        try {
+          return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+        } catch {
+          return '';
+        }
+      })
+      .join('\n');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice</title>
+          <style>
+            ${styles.replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)').replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)').replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')}
+            @media print {
+              @page { margin: 10mm; size: A4; }
+              body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; }
+          </style>
+        </head>
+        <body>
+          ${previewClone.outerHTML}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 1000);
+    }, 300);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!previewRef.current) return;
+
+    try {
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
+          styleTags.forEach((tag) => {
+            if (tag.textContent) {
+              tag.textContent = tag.textContent
+                .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
+                .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
+                .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
+            }
+          });
+          const pdfRoot = clonedDoc.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
+          const fontTarget = pdfRoot ?? clonedDoc.body;
+          if (fontTarget) {
+            fontTarget.style.fontSize = '1.15em';
+            fontTarget.style.lineHeight = '1.3';
+          }
+        },
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const margin = 10;
+      const contentWidth = pdfWidth - margin * 2;
+      const contentHeight = pdfHeight - margin * 2;
+
+      const ratio = canvas.width / canvas.height;
+      let finalWidth = contentWidth;
+      let finalHeight = contentWidth / ratio;
+
+      if (finalHeight <= contentHeight) {
+        pdf.addImage(imgData, 'PNG', margin, margin, finalWidth, finalHeight);
+      } else {
+        const totalPages = Math.ceil(finalHeight / contentHeight);
+        const imgHeightPerPage = canvas.height / totalPages;
+        const pdfHeightPerPage = finalHeight / totalPages;
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage();
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = imgHeightPerPage;
+          const ctx = pageCanvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(
+              canvas,
+              0, i * imgHeightPerPage, canvas.width, imgHeightPerPage,
+              0, 0, canvas.width, imgHeightPerPage
+            );
+            const pageImg = pageCanvas.toDataURL('image/png');
+            pdf.addImage(pageImg, 'PNG', margin, margin, finalWidth, pdfHeightPerPage);
+          }
+        }
+      }
+
+      const fileName = `Invoice_${selectedInvoice?.invoiceNumber || 'preview'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+    } catch (error: any) {
+      alert(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
@@ -571,6 +714,24 @@ export const DashboardPage: React.FC = () => {
       </div>
     );
   }
+
+  const selectedLayout = layoutConfigs.find((layout) => String(layout.id) === selectedLayoutId);
+  const resolvedLayoutConfig = (() => {
+    if (selectedLayout?.config?.sections) {
+      return selectedLayout.config;
+    }
+    if (selectedLayout?.configJson) {
+      try {
+        return JSON.parse(selectedLayout.configJson);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+  const hasVisibleSections = Boolean(
+    resolvedLayoutConfig?.sections?.some((section: any) => section.visible !== false)
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
@@ -862,16 +1023,78 @@ export const DashboardPage: React.FC = () => {
               </div>
             ) : (
               <div className="p-6">
-                <InvoicePreview
-                  customer={selectedCustomer}
-                  items={selectedInvoice.items || []}
-                  dueDate={selectedInvoice.dueDate || ''}
-                  invoiceNumber={selectedInvoice.invoiceNumber}
-                  paymentStatus={selectedInvoice.status}
-                  initialPayment={selectedInvoice.paidAmount}
-                  waveAmount={selectedInvoice.waveAmount || 0}
-                  payments={selectedInvoice.payments || []}
-                />
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePrintInvoice}
+                      className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 text-sm"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print
+                    </button>
+                    <button
+                      onClick={handleDownloadPdf}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-gray-700">Invoice Format</label>
+                  <select
+                    value={selectedLayoutId}
+                    onChange={(e) => setSelectedLayoutId(e.target.value)}
+                    aria-label="Select invoice layout"
+                    className="border rounded-md px-2 py-1 text-sm"
+                  >
+                    <option value="classic">Classic (Current)</option>
+                    <option value="static">Static Invoice</option>
+                    {layoutConfigs.map((layout) => (
+                      <option key={layout.id} value={String(layout.id)}>
+                        {layout.name} {layout.isDefault ? '(Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div ref={previewRef} data-pdf-root="true">
+                  {selectedLayoutId === 'static' ? (
+                    <TaxInvoice
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
+                    <InvoicePreview
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  ) : (
+                    <DynamicInvoiceRenderer
+                      layout={resolvedLayoutConfig}
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

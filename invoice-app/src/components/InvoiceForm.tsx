@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, Trash2, UserPlus, IndianRupee, FolderOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto } from '../types';
+import { InvoiceFormTaxableDetails } from './InvoiceFormTaxableDetails.tsx';
 import { calculateGST } from '../utils/helpers';
 import { AddCustomerModal } from './AddCustomerModal';
 import { InvoiceTemplateModal } from './InvoiceTemplateModal';
-import { api } from '../services/agent';
+import { ToWords } from 'to-words';
 
 interface InvoiceFormProps {
   customers: Customer[];
@@ -41,11 +44,31 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   initialCustomerId,
 }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<number>(initialCustomerId || 0);
+  const { profile } = useAuth();
+  const defaultGstPercentage = profile?.defaultGstPercentage ?? 18;
+  const disableQuantity = profile?.disableQuantity ?? false;
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const [defaultGstPercentage, setDefaultGstPercentage] = useState<number>(18);
-  const [disableQuantity, setDisableQuantity] = useState<boolean>(false);
   const { themeColors, focusRing } = useTheme();
+  const toWords = new ToWords({
+    localeCode: 'en-IN',
+    converterOptions: {
+      currency: true,
+      ignoreDecimal: false,
+      ignoreZeroCurrency: false,
+      doNotAddOnly: false,
+      currencyOptions: {
+        name: 'Rupee',
+        plural: 'Rupees',
+        symbol: '₹',
+        fractionalUnit: {
+          name: 'Paisa',
+          plural: 'Paise',
+          symbol: '',
+        },
+      },
+    },
+  });
 
   // Update selectedCustomer when initialCustomerId changes
   useEffect(() => {
@@ -54,24 +77,6 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       handleSelectedCustomer(initialCustomerId);
     }
   }, [initialCustomerId]);
-
-  // Load default GST percentage and disable quantity setting from user profile
-  useEffect(() => {
-    const loadUserSettings = async () => {
-      try {
-        const response = await api.user.getProfile();
-        if (response.data.defaultGstPercentage !== undefined && response.data.defaultGstPercentage !== null) {
-          setDefaultGstPercentage(response.data.defaultGstPercentage);
-        }
-        if (response.data.disableQuantity !== undefined) {
-          setDisableQuantity(response.data.disableQuantity);
-        }
-      } catch (error) {
-        console.error('Failed to load user settings:', error);
-      }
-    };
-    loadUserSettings();
-  }, []);
 
   const addItem = () => {
     if (selectedCustomer === 0) {
@@ -237,34 +242,37 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
     setShowAddCustomer(false);
   };
 
-  const { totalAmount, totalGST, grandTotal } = calculateTotals();
-  const balanceAmount = grandTotal - initialPayment;
+  const { totalAmount, grandTotal } = calculateTotals();
+  const amountInWords = grandTotal > 0 && !isNaN(grandTotal)
+    ? toWords.convert(grandTotal)
+    : 'Zero Rupees Only';
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h2 className="text-2xl font-bold mb-6">{isEditMode ? 'Edit Invoice' : 'Create New Invoice'}</h2>
+      <div className="bg-white rounded-lg shadow-md p-4">
+        <h2 className="text-xl font-bold mb-4">{isEditMode ? 'Edit Invoice' : 'Create New Invoice'}</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Customer Selection */}
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-gray-700">
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-medium text-gray-700">
                 Select Customer *
               </label>
               <button
                 type="button"
                 onClick={() => setShowAddCustomer(true)}
-                className="flex items-center text-sm text-blue-600 hover:text-blue-700"
+                className="flex items-center text-xs text-blue-600 hover:text-blue-700"
               >
-                <UserPlus className="h-4 w-4 mr-1" />
+                <UserPlus className="h-3 w-3 mr-1" />
                 Add New Customer
               </button>
             </div>
             <select
               value={selectedCustomer}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleCustomerSelection(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Select customer"
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
               <option value={0}>Choose a customer</option>
@@ -282,6 +290,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                 return (
                   <p className="mt-1 text-xs text-gray-500">
                     Balance: ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {' '}
+                    <Link to={`/customers/${selectedCustomer}`} className="text-blue-600 hover:text-blue-700 hover:underline">
+                      View customer
+                    </Link>
                   </p>
                 );
               }
@@ -291,33 +303,34 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
           {/* Due Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">
               Due Date
             </label>
             <input
               type="date"
               value={dueDate}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Due date"
+              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           {/* Invoice Status Section */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Invoice Status</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
+          <div className="bg-gray-50 p-2 rounded-md">
+            <h3 className="text-xs font-medium text-gray-900 mb-1.5">Invoice Status</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 sm:gap-1.5 mb-1.5">
               <button
                 type="button"
                 onClick={() => {
                   setPaymentStatus('Draft');
                   setInitialPayment(0);
                 }}
-                className={`p-2 sm:p-3 border-2 rounded-lg text-center transition-colors text-xs sm:text-sm ${paymentStatus === 'Draft'
+                className={`py-1 px-1.5 border rounded text-center transition-colors text-[11px] leading-tight font-semibold ${paymentStatus === 'Draft'
                   ? 'border-gray-500 bg-gray-100 text-gray-900'
                   : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
                   }`}
               >
-                <div className="font-semibold">Draft</div>
+                Draft
               </button>
 
               <button
@@ -326,57 +339,57 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                   setPaymentStatus('Sent');
                   setInitialPayment(0);
                 }}
-                className={`p-2 sm:p-3 border-2 rounded-lg text-center transition-colors text-xs sm:text-sm ${paymentStatus === 'Sent'
+                className={`py-1 px-1.5 border rounded text-center transition-colors text-[11px] leading-tight font-semibold ${paymentStatus === 'Sent'
                   ? 'border-blue-500 bg-blue-50 text-blue-700'
                   : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
                   }`}
               >
-                <div className="font-semibold">Sent</div>
+                Sent
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePaymentStatusChange('Unpaid')}
-                className={`p-2 sm:p-3 border-2 rounded-lg text-center transition-colors text-xs sm:text-sm ${paymentStatus === 'Unpaid'
+                className={`py-1 px-1.5 border rounded text-center transition-colors text-[11px] leading-tight font-semibold ${paymentStatus === 'Unpaid'
                   ? 'border-red-500 bg-red-50 text-red-700'
                   : 'border-gray-300 bg-white text-gray-700 hover:border-red-300'
                   }`}
               >
-                <div className="font-semibold">Unpaid</div>
+                Unpaid
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePaymentStatusChange('Partially Paid')}
-                className={`p-2 sm:p-3 border-2 rounded-lg text-center transition-colors text-xs sm:text-sm ${paymentStatus === 'Partially Paid'
+                className={`py-1 px-1.5 border rounded text-center transition-colors text-[11px] leading-tight font-semibold ${paymentStatus === 'Partially Paid'
                   ? 'border-yellow-500 bg-yellow-50 text-yellow-700'
                   : 'border-gray-300 bg-white text-gray-700 hover:border-yellow-300'
                   }`}
               >
-                <div className="font-semibold">Partially Paid</div>
+                Partially Paid
               </button>
 
               <button
                 type="button"
                 onClick={() => handlePaymentStatusChange('Paid')}
-                className={`p-2 sm:p-3 border-2 rounded-lg text-center transition-colors text-xs sm:text-sm ${paymentStatus === 'Paid'
+                className={`py-1 px-1.5 border rounded text-center transition-colors text-[11px] leading-tight font-semibold ${paymentStatus === 'Paid'
                   ? 'border-green-500 bg-green-50 text-green-700'
                   : 'border-gray-300 bg-white text-gray-700 hover:border-green-300'
                   }`}
               >
-                <div className="font-semibold">Paid</div>
+                Paid
               </button>
             </div>
 
             {/* Initial Payment Input - Show only for Unpaid, Partially Paid, or Paid */}
             {(paymentStatus === 'Partially Paid' || paymentStatus === 'Paid' || paymentStatus === 'Unpaid') && (
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="mt-1.5">
+                <label className="block text-[11px] font-medium text-gray-700 mb-0.5">
                   Initial Payment Amount (₹)
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <IndianRupee className="h-5 w-5 text-gray-400" />
+                  <div className="absolute inset-y-0 left-0 pl-1.5 flex items-center pointer-events-none">
+                    <IndianRupee className="h-3 w-3 text-gray-400" />
                   </div>
                   <input
                     type="number"
@@ -385,11 +398,12 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                     step="0.01"
                     value={initialPayment}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInitialPaymentChange(Number(e.target.value))}
-                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    aria-label="Initial payment amount"
+                    className="w-full pl-6 pr-1.5 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required={paymentStatus as PaymentStatus !== 'Unpaid'}
                   />
                 </div>
-                <div className="mt-1 text-sm text-gray-500">
+                <div className="mt-0.5 text-[11px] text-gray-500">
                   Maximum: ₹{grandTotal.toLocaleString()}
                 </div>
               </div>
@@ -398,48 +412,46 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
           {/* Invoice Items */}
           <div>
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-4">
-              <h3 className="text-lg font-medium">Invoice Items</h3>
-              <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 sm:gap-0 mb-2">
+              <h3 className="text-sm font-medium">Invoice Items</h3>
+              <div className="flex gap-1.5 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => setShowTemplateModal(true)}
                   disabled={selectedCustomer === 0}
-                  className={`flex items-center px-3 sm:px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`flex items-center px-2 py-1.5 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-xs disabled:opacity-50 disabled:cursor-not-allowed`}
                   title={selectedCustomer === 0 ? "Please select a customer first" : "Load or save templates"}
                 >
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Templates</span>
-                  <span className="sm:hidden">Templates</span>
+                  <FolderOpen className="h-3 w-3 mr-1.5" />
+                  Templates
                 </button>
                 <button
                   type="button"
                   onClick={addItem}
                   disabled={selectedCustomer === 0}
-                  className={`flex items-center px-3 sm:px-4 py-2 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover} text-sm sm:text-base disabled:opacity-50 disabled:cursor-not-allowed`}
+                  className={`flex items-center px-2 py-1.5 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover} text-xs disabled:opacity-50 disabled:cursor-not-allowed`}
                   title={selectedCustomer === 0 ? "Please select a customer first" : "Add new item"}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">Add Item</span>
-                  <span className="sm:hidden">Add</span>
+                  <Plus className="h-3 w-3 mr-1.5" />
+                  Add Item
                 </button>
               </div>
             </div>
 
             {selectedCustomer === 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                <p className="text-sm text-yellow-800">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-2">
+                <p className="text-xs text-yellow-800">
                   <strong>Please select a customer first</strong> before adding products to the invoice.
                 </p>
               </div>
             )}
 
-            <div className={`space-y-4 ${selectedCustomer === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className={`space-y-2 ${selectedCustomer === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
               {items.map((item, index) => (
-                <div key={index} className="border rounded-lg p-3 sm:p-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 sm:gap-4 items-end">
+                <div key={index} className="border rounded-md p-2 sm:p-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-3 items-end">
                     <div className="sm:col-span-2 lg:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Product Name *
                       </label>
                       <input
@@ -447,13 +459,14 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                         value={item.productName || ''}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'productName', e.target.value)}
                         disabled={selectedCustomer === 0}
-                        className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        aria-label={`Product name ${index + 1}`}
+                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         required
                       />
                     </div>
 
                     <div className="sm:col-span-1 lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         {disableQuantity ? 'Quantity (Fixed: 1)' : 'Quantity *'}
                       </label>
                       {disableQuantity ? (
@@ -461,7 +474,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                           type="number"
                           value="1"
                           disabled
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
+                          aria-label={`Quantity ${index + 1}`}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
                         />
                       ) : (
                         <input
@@ -471,14 +485,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                           value={item.quantity || ''}
                           onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'quantity', Number(e.target.value))}
                           disabled={selectedCustomer === 0}
-                          className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                          aria-label={`Quantity ${index + 1}`}
+                          className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                           required
                         />
                       )}
                     </div>
 
                     <div className="sm:col-span-1 lg:col-span-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Rate (₹) *
                       </label>
                       <input
@@ -488,13 +503,14 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                         value={item.rate || ''}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'rate', Number(e.target.value))}
                         disabled={selectedCustomer === 0}
-                        className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        aria-label={`Rate ${index + 1}`}
+                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         required
                       />
                     </div>
 
                     <div className="sm:col-span-1 lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         GST % *
                       </label>
                       <input
@@ -507,7 +523,8 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                           updateItem(index, 'gstPercentage', value !== undefined ? value : 0);
                         }}
                         disabled={selectedCustomer === 0}
-                        className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        aria-label={`GST percentage ${index + 1}`}
+                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                         required
                       />
                     </div>
@@ -517,17 +534,17 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                         type="button"
                         onClick={() => removeItem(index)}
                         disabled={selectedCustomer === 0}
-                        className="w-full p-2 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full p-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Remove item"
                         aria-label="Remove item"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                       </button>
                     </div>
                   </div>
 
                   {/* Calculated amounts */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-3 pt-3 border-t text-xs sm:text-sm">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mt-2 pt-2 border-t text-xs">
                     <div><span className="font-medium">Amount:</span> ₹{item.amount?.toFixed(2) || '0.00'}</div>
                     <div><span className="font-medium">GST:</span> ₹{item.gstAmount?.toFixed(2) || '0.00'}</div>
                     <div><span className="font-medium">CGST:</span> ₹{item.cgst?.toFixed(2) || '0.00'}</div>
@@ -538,60 +555,19 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             </div>
           </div>
 
-          {/* Totals and Payment Summary */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-              <div>
-                <h4 className="text-lg font-semibold mb-3">Invoice Totals</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Total Amount:</span>
-                    <span>₹{totalAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total GST:</span>
-                    <span>₹{totalGST.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold border-t pt-2">
-                    <span>Grand Total:</span>
-                    <span className={themeColors.accent}>₹{grandTotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-lg font-semibold mb-3">Payment Summary</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Status:</span>
-                    <span className={`font-semibold ${paymentStatus === 'Paid' ? 'text-green-600' :
-                      paymentStatus === 'Partially Paid' ? 'text-yellow-600' :
-                        'text-red-600'
-                      }`}>
-                      {paymentStatus}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Paid Amount:</span>
-                    <span className="text-green-600">₹{initialPayment.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-lg font-bold border-t pt-2">
-                    <span>Balance Due:</span>
-                    <span className="text-red-600">₹{balanceAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Balance Amount:</span>
-                    <span>₹{(grandTotal - initialPayment).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* Taxable Amount Details */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <InvoiceFormTaxableDetails
+              totalAmount={totalAmount}
+              grandTotal={grandTotal}
+              amountInWords={amountInWords}
+            />
           </div>
 
           <button
             type="submit"
             disabled={selectedCustomer === 0}
-            className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-green-600 text-white py-2 px-3 rounded-md hover:bg-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isEditMode ? 'Update Invoice' : 'Create Invoice'}
           </button>

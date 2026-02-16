@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using InvoiceApp.Application.DTOs;
 using InvoiceApp.Application.Interfaces;
 using InvoiceApp.Domain.Entities;
@@ -262,11 +262,11 @@ namespace InvoiceApp.Infrastructure.Repositories
 
             var customers = await _context.Customers
                 .Where(c => c.UserId == userId &&
-                           (c.CustomerName.Contains(searchTerm) ||
-                            c.Email.Contains(searchTerm) ||
-                            c.Phone.Contains(searchTerm) ||
-                            c.GstNumber.Contains(searchTerm) ||
-                            c.City.Contains(searchTerm)))
+                           ((c.CustomerName != null && c.CustomerName.Contains(searchTerm)) ||
+                            (c.Email != null && c.Email.Contains(searchTerm)) ||
+                            (c.Phone != null && c.Phone.Contains(searchTerm)) ||
+                            (c.GstNumber != null && c.GstNumber.Contains(searchTerm)) ||
+                            (c.City != null && c.City.Contains(searchTerm))))
                 .OrderBy(c => c.CustomerName)
                 .ToListAsync();
 

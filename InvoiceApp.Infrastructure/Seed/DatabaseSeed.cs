@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using InvoiceApp.Infrastructure.Data;
@@ -47,6 +47,10 @@ namespace InvoiceApp.Infrastructure.Seed
                     IfscCode = "SBIN0001234",
                     PanNumber = "BBPK5069A",
                     Phone = "+91-9876543210",
+                    HeaderLogoBgColor = "#ffffff",
+                    AddressSectionBgColor = "#ffffff",
+                    HeaderLogoTextColor = "#111111",
+                    AddressSectionTextColor = "#111111",
                     InvoicePrefix = "INV",
                     CreatedAt = DateTime.UtcNow,
                     CreatedBy = null // MasterUser has no creator
@@ -54,6 +58,29 @@ namespace InvoiceApp.Infrastructure.Seed
 
                 await _context.Users.AddAsync(masterUser);
                 await _context.SaveChangesAsync();
+            }
+            else
+            {
+                var usersToUpdate = await _context.Users
+                    .Where(u =>
+                        u.HeaderLogoBgColor == null ||
+                        u.AddressSectionBgColor == null ||
+                        u.HeaderLogoTextColor == null ||
+                        u.AddressSectionTextColor == null)
+                    .ToListAsync();
+
+                if (usersToUpdate.Count > 0)
+                {
+                    foreach (var user in usersToUpdate)
+                    {
+                        user.HeaderLogoBgColor ??= "#ffffff";
+                        user.AddressSectionBgColor ??= "#ffffff";
+                        user.HeaderLogoTextColor ??= "#111111";
+                        user.AddressSectionTextColor ??= "#111111";
+                    }
+
+                    await _context.SaveChangesAsync();
+                }
             }
         }
 

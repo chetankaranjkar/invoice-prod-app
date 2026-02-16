@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using InvoiceApp.Domain.Entities;
 using System.Collections.Generic;
 
@@ -12,6 +12,7 @@ namespace InvoiceApp.Application.Interfaces
         public DbSet<Invoice> Invoices { get; set; }
         public DbSet<InvoiceItem> InvoiceItems { get; set; }
         public DbSet<Payment> Payments { get; set; }
+        public DbSet<InvoiceLayoutConfig> InvoiceLayoutConfigs { get; set; }
         Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

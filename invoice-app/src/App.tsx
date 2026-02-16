@@ -10,54 +10,27 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { BackupPage } from './pages/BackupPage';
 import { ErrorLogPage } from './pages/ErrorLogPage';
 import { RecurringInvoicesPage } from './pages/RecurringInvoicesPage';
+import { InvoiceLayoutDesignerPage } from './pages/InvoiceLayoutDesignerPage';
 import { Navigation } from './components/Navigation';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SidebarProvider, useSidebar } from './contexts/SidebarContext';
-import type { UserProfile } from './types';
-import { api } from './services/agent';
+import { AuthProvider } from './contexts/AuthContext';
 import { SimpleIdleWarning } from './components/SimpleIdleWarning';
 
 // Main App component
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [, setUserProfile] = useState<UserProfile | null>(null);
-
   useEffect(() => {
-    checkInitialAuth();
+    setIsAuthenticated(!!localStorage.getItem('authToken'));
+    setLoading(false);
   }, []);
 
-  const checkInitialAuth = () => {
-    const token = localStorage.getItem('authToken');
-    setIsAuthenticated(!!token);
-    setLoading(false);
-  };
-
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
-    loadUserProfile();
-  };
-
+  const handleLoginSuccess = () => setIsAuthenticated(true);
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     setIsAuthenticated(false);
-    setUserProfile(null);
-  };
-
-  const loadUserProfile = async () => {
-    try {
-      const response = await api.user.getProfile();
-      setUserProfile(response.data);
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ Failed to load user profile:', error);
-      }
-    }
-  };
-
-  const handleProfileUpdate = (profile: UserProfile) => {
-    setUserProfile(profile);
   };
 
   return (
@@ -70,21 +43,23 @@ function App() {
         ) : !isAuthenticated ? (
           <LoginPage onLoginSuccess={handleLoginSuccess} />
         ) : (
-          <Router>
-            <AppContent onLogout={handleLogout} onProfileUpdate={handleProfileUpdate} />
-          </Router>
+          <AuthProvider>
+            <Router>
+              <AppContent onLogout={handleLogout} />
+            </Router>
+          </AuthProvider>
         )}
       </SidebarProvider>
     </ThemeProvider>
   );
 }
 
-function AppContent({ onLogout, onProfileUpdate }: { onLogout: () => void; onProfileUpdate: (profile: UserProfile) => void }) {
+function AppContent({ onLogout }: { onLogout: () => void }) {
   const { isCollapsed } = useSidebar();
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation onLogout={onLogout} onProfileUpdate={onProfileUpdate} />
+      <Navigation onLogout={onLogout} />
       <main 
         className="transition-all duration-300 pt-16 lg:pt-0 min-h-screen p-3 sm:p-4 lg:p-6"
         style={{ marginRight: isCollapsed ? '64px' : '256px' }}
@@ -100,11 +75,13 @@ function AppContent({ onLogout, onProfileUpdate }: { onLogout: () => void; onPro
           <Route path="/customers" element={<CustomersPage />} />
           <Route path="/customers/paid" element={<CustomersPage filter="paid" />} />
           <Route path="/customers/unpaid" element={<CustomersPage filter="unpaid" />} />
+          <Route path="/customers/:customerId" element={<CustomersPage />} />
           <Route path="/users" element={<UserManagementPage />} />
           <Route path="/audit-logs" element={<AuditLogPage />} />
           <Route path="/backup" element={<BackupPage />} />
           <Route path="/error-logs" element={<ErrorLogPage />} />
           <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
+          <Route path="/invoice-layouts" element={<InvoiceLayoutDesignerPage />} />
         </Routes>
       </main>
     </div>

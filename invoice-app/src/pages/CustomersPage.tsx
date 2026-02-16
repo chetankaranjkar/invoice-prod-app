@@ -1,22 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, IndianRupee, Phone, Mail, UserPlus, X, Edit, Eye, Upload, Download } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { Users, IndianRupee, Phone, Mail, UserPlus, X, Edit, Eye, Upload, Download, Printer } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/agent';
-import type { Customer, Invoice, CreateCustomerDto } from '../types';
+import type { Customer, Invoice, CreateCustomerDto, InvoiceLayoutConfigDto } from '../types';
 import { formatCurrency } from '../utils/helpers';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { AddCustomerModal } from '../components/AddCustomerModal';
 import { EditCustomerModal } from '../components/EditCustomerModal';
 import { InvoicePreview } from '../components/InvoicePreview';
+import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
+import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import { AddPaymentModal } from '../components/AddPaymentModal';
 import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 interface CustomersPageProps {
   filter?: 'all' | 'paid' | 'unpaid';
 }
 
 export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) => {
+  const { customerId: customerIdParam } = useParams<{ customerId?: string }>();
   const { themeColors } = useTheme();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -38,10 +44,14 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadData();
     loadUserRole();
+    loadInvoiceLayouts();
   }, []);
 
   const loadUserRole = async () => {
@@ -67,6 +77,20 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       setError(err.response?.data?.message || 'Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadInvoiceLayouts = async () => {
+    try {
+      const response = await api.invoiceLayouts.getList();
+      const layouts = response.data || [];
+      setLayoutConfigs(layouts);
+      const defaultLayout = layouts.find((layout: InvoiceLayoutConfigDto) => layout.isDefault);
+      if (defaultLayout) {
+        setSelectedLayoutId(String(defaultLayout.id));
+      }
+    } catch (error) {
+      console.error('Failed to load invoice layouts:', error);
     }
   };
 
@@ -126,12 +150,23 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
     }
   };
 
+  // When navigating to /customers/:customerId, open that customer's panel once data is loaded
+  useEffect(() => {
+    if (!customerIdParam || customers.length === 0) return;
+    if (customerIdParam === 'paid' || customerIdParam === 'unpaid') return;
+    const id = Number(customerIdParam);
+    if (!Number.isInteger(id)) return;
+    const customer = customers.find((c) => c.id === id);
+    if (customer) handleViewInvoices(customer);
+  }, [customers, customerIdParam]);
+
   // 🆕 Load full invoice details for preview
   const handleViewInvoice = async (invoiceId: number) => {
     try {
       setLoadingInvoiceDetails(true);
       const response = await api.invoices.getById(invoiceId);
       setSelectedInvoice(response.data);
+      setSelectedLayoutId('static');
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Error loading invoice details:', error);
@@ -139,6 +174,123 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       alert('Failed to load invoice details');
     } finally {
       setLoadingInvoiceDetails(false);
+    }
+  };
+
+  const handlePrintInvoice = () => {
+    if (!previewRef.current) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print the invoice');
+      return;
+    }
+
+    const previewClone = previewRef.current.cloneNode(true) as HTMLElement;
+    const styles = Array.from(document.styleSheets)
+      .map(sheet => {
+        try {
+          return Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+        } catch {
+          return '';
+        }
+      })
+      .join('\n');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice</title>
+          <style>
+            ${styles.replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)').replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)').replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')}
+            @media print {
+              @page { margin: 10mm; size: A4; }
+              body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; }
+          </style>
+        </head>
+        <body>
+          ${previewClone.outerHTML}
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(() => printWindow.close(), 1000);
+    }, 300);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!previewRef.current) return;
+
+    try {
+      const canvas = await html2canvas(previewRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
+          styleTags.forEach((tag) => {
+            if (tag.textContent) {
+              tag.textContent = tag.textContent
+                .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
+                .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
+                .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
+            }
+          });
+          const pdfRoot = clonedDoc.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
+          const fontTarget = pdfRoot ?? clonedDoc.body;
+          if (fontTarget) {
+            fontTarget.style.fontSize = '1.15em';
+            fontTarget.style.lineHeight = '1.3';
+          }
+        },
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const margin = 10;
+      const contentWidth = pdfWidth - margin * 2;
+      const contentHeight = pdfHeight - margin * 2;
+
+      const ratio = canvas.width / canvas.height;
+      let finalWidth = contentWidth;
+      let finalHeight = contentWidth / ratio;
+
+      if (finalHeight <= contentHeight) {
+        pdf.addImage(imgData, 'PNG', margin, margin, finalWidth, finalHeight);
+      } else {
+        const totalPages = Math.ceil(finalHeight / contentHeight);
+        const imgHeightPerPage = canvas.height / totalPages;
+        const pdfHeightPerPage = finalHeight / totalPages;
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage();
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = imgHeightPerPage;
+          const ctx = pageCanvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(
+              canvas,
+              0, i * imgHeightPerPage, canvas.width, imgHeightPerPage,
+              0, 0, canvas.width, imgHeightPerPage
+            );
+            const pageImg = pageCanvas.toDataURL('image/png');
+            pdf.addImage(pageImg, 'PNG', margin, margin, finalWidth, pdfHeightPerPage);
+          }
+        }
+      }
+
+      const fileName = `Invoice_${selectedInvoice?.invoiceNumber || 'preview'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+    } catch (error: any) {
+      alert(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
     }
   };
 
@@ -462,6 +614,24 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorAlert message={error} onRetry={loadData} />;
 
+  const selectedLayout = layoutConfigs.find((layout) => String(layout.id) === selectedLayoutId);
+  const resolvedLayoutConfig = (() => {
+    if (selectedLayout?.config?.sections) {
+      return selectedLayout.config;
+    }
+    if (selectedLayout?.configJson) {
+      try {
+        return JSON.parse(selectedLayout.configJson);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+  const hasVisibleSections = Boolean(
+    resolvedLayoutConfig?.sections?.some((section: any) => section.visible !== false)
+  );
+
   return (
     <>
       <div className="min-h-screen bg-gray-50 p-6">
@@ -474,6 +644,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
               <button
                 onClick={() => setImportError('')}
                 className="ml-4 text-yellow-600 hover:text-yellow-800"
+                title="Dismiss"
+                aria-label="Dismiss import error"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -519,6 +691,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                     accept=".xlsx,.xls,.csv"
                     onChange={handleFileImport}
                     style={{ display: 'none' }}
+                    aria-label="Upload customers file"
                   />
                   <button
                     onClick={() => setShowAddCustomer(true)}
@@ -657,8 +830,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
 
       {/* 🧾 Customer Invoice + Payment Modal */}
       {selectedCustomer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl p-6 relative max-h-[90vh] overflow-auto">
             <button
               onClick={() => setSelectedCustomer(null)}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-700"
@@ -675,11 +848,12 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
             {loadingInvoices ? (
               <LoadingSpinner />
             ) : customerInvoices.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+              <div className="min-w-0">
+                <table className="w-full text-sm min-w-full">
                   <thead className="bg-gray-100 text-gray-700">
                     <tr>
                       <th className="px-4 py-2 text-left">Invoice #</th>
+                      <th className="px-4 py-2 text-left whitespace-nowrap min-w-[7rem]">Invoice Date</th>
                       <th className="px-4 py-2 text-right">Total</th>
                       <th className="px-4 py-2 text-right">Paid</th>
                       <th className="px-4 py-2 text-right">Waved</th>
@@ -695,6 +869,9 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                           onClick={() => handleViewInvoice(inv.id)}
                         >
                           {inv.invoiceNumber}
+                        </td>
+                        <td className="px-4 py-2 text-left text-gray-600 whitespace-nowrap min-w-[7rem]">
+                          {inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '–'}
                         </td>
                         <td className="px-4 py-2 text-right">
                           ₹{inv.grandTotal.toLocaleString()}
@@ -778,16 +955,78 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
               </div>
             ) : (
               <div className="p-6">
-                <InvoicePreview
-                  customer={selectedCustomer}
-                  items={selectedInvoice.items || []}
-                  dueDate={selectedInvoice.dueDate || ''}
-                  invoiceNumber={selectedInvoice.invoiceNumber}
-                  paymentStatus={selectedInvoice.status}
-                  initialPayment={selectedInvoice.paidAmount}
-                  waveAmount={selectedInvoice.waveAmount || 0}
-                  payments={selectedInvoice.payments || []}
-                />
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePrintInvoice}
+                      className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 text-sm"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print
+                    </button>
+                    <button
+                      onClick={handleDownloadPdf}
+                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-sm font-medium text-gray-700">Invoice Format</label>
+                  <select
+                    value={selectedLayoutId}
+                    onChange={(e) => setSelectedLayoutId(e.target.value)}
+                    aria-label="Select invoice layout"
+                    className="border rounded-md px-2 py-1 text-sm"
+                  >
+                    <option value="classic">Classic (Current)</option>
+                    <option value="static">Static Invoice</option>
+                    {layoutConfigs.map((layout) => (
+                      <option key={layout.id} value={String(layout.id)}>
+                        {layout.name} {layout.isDefault ? '(Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div ref={previewRef} data-pdf-root="true">
+                  {selectedLayoutId === 'static' ? (
+                    <TaxInvoice
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
+                    <InvoicePreview
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  ) : (
+                    <DynamicInvoiceRenderer
+                      layout={resolvedLayoutConfig}
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

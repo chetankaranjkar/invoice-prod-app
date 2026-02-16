@@ -4,29 +4,25 @@ import { LayoutDashboard, FileText, Users, LogOut, Settings, UserCog, ChevronDow
 import { UserProfileModal } from './UserProfileModal';
 import { ThemeSelector } from './ThemeSelector';
 import { useSidebar } from '../contexts/SidebarContext';
-import { api } from '../services/agent';
+import { useAuth } from '../contexts/AuthContext';
 import type { UserProfile } from '../types';
 
 interface NavigationProps {
   onLogout: () => void;
-  onProfileUpdate: (profile: UserProfile) => void;
 }
 
-export const Navigation: React.FC<NavigationProps> = ({ onLogout, onProfileUpdate }) => {
+export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { isCollapsed, toggleCollapse } = useSidebar();
+  const { profile, setProfile } = useAuth();
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [userRole, setUserRole] = useState<string>('User');
-  const [businessName, setBusinessName] = useState<string>('');
-  const [userName, setUserName] = useState<string>('');
+  const userRole = profile?.role || 'User';
+  const businessName = profile?.businessName || '';
+  const userName = profile?.name || profile?.email || 'User';
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    loadUserProfile();
-  }, []);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -45,21 +41,9 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout, onProfileUpdat
     };
   }, [showUserDropdown]);
 
-  const loadUserProfile = async () => {
-    try {
-      const response = await api.user.getProfile();
-      setUserRole(response.data.role || 'User');
-      setBusinessName(response.data.businessName || '');
-      setUserName(response.data.name || response.data.email || 'User');
-    } catch (error) {
-      console.error('Failed to load user profile:', error);
-    }
-  };
-
-  const handleProfileUpdate = (profile: UserProfile) => {
-    setBusinessName(profile.businessName || '');
-    setUserName(profile.name || profile.email || 'User');
-    onProfileUpdate(profile);
+  const handleProfileUpdate = (updated: UserProfile) => {
+    setProfile(updated);
+    setShowProfileModal(false);
   };
 
   const navigation = [
@@ -71,6 +55,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout, onProfileUpdat
     ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'User Management', href: '/users', icon: UserCog }] : []),
     ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'Backup & Restore', href: '/backup', icon: Database }] : []),
     ...(userRole === 'MasterUser' ? [{ name: 'Error Logs', href: '/error-logs', icon: AlertTriangle }] : []),
+    ...(userRole !== 'MasterUser' ? [{ name: 'Invoice Layouts', href: '/invoice-layouts', icon: Settings }] : []),
   ];
 
   const handleNavigation = (href: string) => {

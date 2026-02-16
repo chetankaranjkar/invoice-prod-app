@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { InvoiceForm } from '../components/InvoiceForm';
 import { InvoicePreview } from '../components/InvoicePreview';
+import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
+import TaxInvoice from '../components/static-invoice/TaxInvoice';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/agent';
-import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus } from '../types';
+import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
 import { calculateGST, generateInvoiceNumber } from '../utils/helpers';
 
 export const InvoiceCreationPage: React.FC = () => {
+  const { profile, loadProfile } = useAuth();
+  const userRole = profile?.role || 'User';
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
@@ -13,43 +18,28 @@ export const InvoiceCreationPage: React.FC = () => {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Unpaid');
   const [initialPayment, setInitialPayment] = useState<number>(0);
   const [invoiceNumber, setInvoiceNumber] = useState('INV00001');
-  const [userRole, setUserRole] = useState<string>('User');
+  const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
 
   const [items, setItems] = useState<Partial<InvoiceItem>[]>([
     { productName: '', quantity: 1, rate: 0, gstPercentage: 18 },
   ]);
 
   useEffect(() => {
-    const loadDefaultGst = async () => {
-      try {
-        const response = await api.user.getProfile();
-        if (response.data.defaultGstPercentage !== undefined && response.data.defaultGstPercentage !== null) {
-          const defaultGst = response.data.defaultGstPercentage;
-          // Update initial item with default GST
-          setItems([{ productName: '', quantity: 1, rate: 0, gstPercentage: defaultGst }]);
-        }
-      } catch (error) {
-        console.error('Failed to load default GST:', error);
-      }
-    };
-    loadDefaultGst();
-  }, []);
+    if (profile?.defaultGstPercentage !== undefined && profile?.defaultGstPercentage !== null) {
+      setItems(prev => prev.length ? [{ ...prev[0], gstPercentage: profile.defaultGstPercentage ?? 18 }] : [{ productName: '', quantity: 1, rate: 0, gstPercentage: profile.defaultGstPercentage ?? 18 }]);
+    }
+  }, [profile?.defaultGstPercentage]);
 
   useEffect(() => {
-    loadUserRole();
     if (userRole !== 'MasterUser') {
       loadCustomers();
     }
   }, [userRole]);
 
-  const loadUserRole = async () => {
-    try {
-      const response = await api.user.getProfile();
-      setUserRole(response.data.role || 'User');
-    } catch (error) {
-      console.error('Failed to load user role:', error);
-    }
-  };
+  useEffect(() => {
+    loadInvoiceLayouts();
+  }, []);
 
   const loadCustomers = async () => {
     try {
@@ -60,16 +50,34 @@ export const InvoiceCreationPage: React.FC = () => {
     }
   };
 
+  const loadInvoiceLayouts = async () => {
+    try {
+      const response = await api.invoiceLayouts.getList();
+      const layouts = response.data || [];
+      setLayoutConfigs(layouts);
+      const defaultLayout = layouts.find((layout: InvoiceLayoutConfigDto) => layout.isDefault);
+      if (defaultLayout) {
+        setSelectedLayoutId(String(defaultLayout.id));
+      }
+    } catch (error) {
+      console.error('Failed to load invoice layouts:', error);
+    }
+  };
+
   const handleInvoiceCreate = async (invoiceData: CreateInvoiceDto) => {
     try {
       await api.invoices.create(invoiceData);
       alert('Invoice created successfully!');
 
-      // Reset form
+      // Clear all form data except selected customer
       setInvoiceItems([]);
+      const refreshed = await loadProfile();
+      const defaultGst = refreshed?.defaultGstPercentage ?? 18;
+      setItems([{ productName: '', quantity: 1, rate: 0, gstPercentage: defaultGst }]);
       setDueDate('');
       setPaymentStatus('Unpaid');
       setInitialPayment(0);
+      await generateNextInvoiceNumber();
     } catch (error: any) {
       console.error('Failed to create invoice:', error);
       alert(`Failed to create invoice: ${error.response?.data?.message || 'Please try again.'}`);
@@ -95,9 +103,9 @@ export const InvoiceCreationPage: React.FC = () => {
 
   const generateNextInvoiceNumber = async () => {
     try {
-      // Get user profile to get invoice prefix
-      const profileResponse = await api.user.getProfile();
-      const invoicePrefix = profileResponse.data.invoicePrefix || 'INV';
+      let p = profile;
+      if (!p?.invoicePrefix) p = await loadProfile();
+      const invoicePrefix = p?.invoicePrefix || 'INV';
 
       // Get all invoices to find the latest one
       const invoicesResponse = await api.invoices.getList();
@@ -177,12 +185,30 @@ export const InvoiceCreationPage: React.FC = () => {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
-      <div className="max-w-8xl mx-auto">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 sm:mb-6 md:mb-8">Create Invoice</h1>
+  const selectedLayout = layoutConfigs.find((layout) => String(layout.id) === selectedLayoutId);
+  const resolvedLayoutConfig = (() => {
+    if (selectedLayout?.config?.sections) {
+      return selectedLayout.config;
+    }
+    if (selectedLayout?.configJson) {
+      try {
+        return JSON.parse(selectedLayout.configJson);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+  const hasVisibleSections = Boolean(
+    resolvedLayoutConfig?.sections?.some((section: any) => section.visible !== false)
+  );
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
+  return (
+    <div className="min-h-screen bg-gray-50 p-2 sm:p-3 md:p-4">
+      <div className="max-w-8xl mx-auto">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4 md:mb-6">Create Invoice</h1>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
           {/* Left Side - Invoice Form */}
           <div className='lg:col-span-1'>
             <InvoiceForm
@@ -204,20 +230,63 @@ export const InvoiceCreationPage: React.FC = () => {
           {/* Right Side - Invoice Preview */}
           {selectedCustomer && (
             <div className='lg:col-span-2'>
-              <InvoicePreview
-                customer={selectedCustomer}
-                items={invoiceItems}
-                dueDate={dueDate}
-                invoiceNumber={invoiceNumber}
-                paymentStatus={paymentStatus}
-                initialPayment={initialPayment}
-              />
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
+                <label className="text-xs font-medium text-gray-700">Invoice Format</label>
+                <select
+                  value={selectedLayoutId}
+                  onChange={(e) => setSelectedLayoutId(e.target.value)}
+                  aria-label="Select invoice layout"
+                  className="border rounded-md px-2 py-1 text-xs"
+                >
+                  <option value="classic">Classic (Current)</option>
+                  <option value="static">Static Invoice</option>
+                  {layoutConfigs.map((layout) => (
+                    <option key={layout.id} value={String(layout.id)}>
+                      {layout.name} {layout.isDefault ? '(Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!hasVisibleSections && selectedLayoutId !== 'classic' && (
+                <div className="mb-1.5 rounded-md bg-yellow-50 border border-yellow-200 px-2 py-1.5 text-xs text-yellow-800">
+                  Selected layout has no visible sections. Please edit the layout or enable sections.
+                </div>
+              )}
+              {selectedLayoutId === 'static' ? (
+                <TaxInvoice
+                  customer={selectedCustomer}
+                  items={invoiceItems}
+                  dueDate={dueDate}
+                  invoiceNumber={invoiceNumber}
+                  paymentStatus={paymentStatus}
+                  initialPayment={initialPayment}
+                />
+              ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
+                <InvoicePreview
+                  customer={selectedCustomer}
+                  items={invoiceItems}
+                  dueDate={dueDate}
+                  invoiceNumber={invoiceNumber}
+                  paymentStatus={paymentStatus}
+                  initialPayment={initialPayment}
+                />
+              ) : (
+                <DynamicInvoiceRenderer
+                  layout={resolvedLayoutConfig}
+                  customer={selectedCustomer}
+                  items={invoiceItems}
+                  dueDate={dueDate}
+                  invoiceNumber={invoiceNumber}
+                  paymentStatus={paymentStatus}
+                  initialPayment={initialPayment}
+                />
+              )}
             </div>
           )}
           {!selectedCustomer && (
-            <div className='lg:col-span-2 flex items-center justify-center bg-white rounded-lg shadow-md p-8'>
+            <div className='lg:col-span-2 flex items-center justify-center bg-white rounded-lg shadow-md p-6'>
               <div className="text-center text-gray-500">
-                <p className="text-lg font-medium">Please select a customer to see the invoice preview</p>
+                <p className="text-base font-medium">Please select a customer to see the invoice preview</p>
               </div>
             </div>
           )}

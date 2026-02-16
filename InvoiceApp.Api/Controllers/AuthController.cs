@@ -1,4 +1,4 @@
-﻿using InvoiceApp.Application.DTOs;
+using InvoiceApp.Application.DTOs;
 using InvoiceApp.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -47,7 +47,7 @@ namespace InvoiceApp.Api.Controllers
                 // Handle duplicate email
                 return BadRequest(ex.Message);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return StatusCode(500, "An error occurred while registering user");
             }

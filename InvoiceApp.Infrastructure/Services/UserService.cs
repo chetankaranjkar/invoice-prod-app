@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -65,6 +65,12 @@ namespace InvoiceApp.Infrastructure.Services
             if (!string.IsNullOrEmpty(updateDto.PanNumber))
                 user.PanNumber = updateDto.PanNumber;
 
+            if (!string.IsNullOrEmpty(updateDto.MembershipNo))
+                user.MembershipNo = updateDto.MembershipNo;
+
+            if (!string.IsNullOrEmpty(updateDto.GstpNumber))
+                user.GstpNumber = updateDto.GstpNumber;
+
             if (!string.IsNullOrEmpty(updateDto.Phone))
                 user.Phone = updateDto.Phone;
 
@@ -76,6 +82,24 @@ namespace InvoiceApp.Infrastructure.Services
 
             if (!string.IsNullOrEmpty(updateDto.Zip))
                 user.Zip = updateDto.Zip;
+
+            if (!string.IsNullOrEmpty(updateDto.HeaderLogoBgColor))
+                user.HeaderLogoBgColor = updateDto.HeaderLogoBgColor;
+
+            if (!string.IsNullOrEmpty(updateDto.AddressSectionBgColor))
+                user.AddressSectionBgColor = updateDto.AddressSectionBgColor;
+
+            if (!string.IsNullOrEmpty(updateDto.HeaderLogoTextColor))
+                user.HeaderLogoTextColor = updateDto.HeaderLogoTextColor;
+
+            if (!string.IsNullOrEmpty(updateDto.AddressSectionTextColor))
+                user.AddressSectionTextColor = updateDto.AddressSectionTextColor;
+
+            if (!string.IsNullOrEmpty(updateDto.GpayNumber))
+                user.GpayNumber = updateDto.GpayNumber;
+
+            if (updateDto.TaxPractitionerTitle != null)
+                user.TaxPractitionerTitle = updateDto.TaxPractitionerTitle;
 
             if (!string.IsNullOrEmpty(updateDto.InvoicePrefix))
                 user.InvoicePrefix = updateDto.InvoicePrefix;

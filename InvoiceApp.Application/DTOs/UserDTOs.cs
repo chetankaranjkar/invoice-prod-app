@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 namespace InvoiceApp.Application.DTOs
 {
@@ -15,11 +15,19 @@ namespace InvoiceApp.Application.DTOs
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? MembershipNo { get; set; }
+        public string? GstpNumber { get; set; }
         public string? City { get; set; }
         public string? State { get; set; }
         public string? Zip { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
+        public string? HeaderLogoBgColor { get; set; }
+        public string? AddressSectionBgColor { get; set; }
+        public string? HeaderLogoTextColor { get; set; }
+        public string? AddressSectionTextColor { get; set; }
+        public string? GpayNumber { get; set; }
+        public string? TaxPractitionerTitle { get; set; }
         public string? InvoicePrefix { get; set; }
         public decimal DefaultGstPercentage { get; set; } = 18;
         public bool DisableQuantity { get; set; } = false;
@@ -36,10 +44,18 @@ namespace InvoiceApp.Application.DTOs
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? MembershipNo { get; set; }
+        public string? GstpNumber { get; set; }
         public string? City { get; set; }
         public string? State { get; set; }
         public string? Zip { get; set; }
         public string? Phone { get; set; }
+        public string? HeaderLogoBgColor { get; set; }
+        public string? AddressSectionBgColor { get; set; }
+        public string? HeaderLogoTextColor { get; set; }
+        public string? AddressSectionTextColor { get; set; }
+        public string? GpayNumber { get; set; }
+        public string? TaxPractitionerTitle { get; set; }
         public string? InvoicePrefix { get; set; }
         public decimal? DefaultGstPercentage { get; set; }
         public bool? DisableQuantity { get; set; }
@@ -58,10 +74,17 @@ namespace InvoiceApp.Application.DTOs
         public string? BankAccountNo { get; set; }
         public string? IfscCode { get; set; }
         public string? PanNumber { get; set; }
+        public string? MembershipNo { get; set; }
+        public string? GstpNumber { get; set; }
         public string? City { get; set; }
         public string? State { get; set; }
         public string? Zip { get; set; }
         public string? Phone { get; set; }
+        public string? HeaderLogoBgColor { get; set; }
+        public string? AddressSectionBgColor { get; set; }
+        public string? HeaderLogoTextColor { get; set; }
+        public string? AddressSectionTextColor { get; set; }
+        public string? GpayNumber { get; set; }
     }
 
     public class UserListDto

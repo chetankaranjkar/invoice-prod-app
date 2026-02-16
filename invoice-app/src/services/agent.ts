@@ -250,6 +250,18 @@ export const api = {
     delete: (id: number) => agent.delete<any>(`InvoiceTemplate/${id}`),
   },
 
+  // Invoice Layout APIs
+  invoiceLayouts: {
+    getSchema: () => agent.get<any>('InvoiceLayout/schema'),
+    getList: () => agent.get<any[]>('InvoiceLayout'),
+    getDefault: () => agent.get<any>('InvoiceLayout/default'),
+    getById: (id: number) => agent.get<any>(`InvoiceLayout/${id}`),
+    create: (data: any) => agent.post<any>('InvoiceLayout', data),
+    update: (id: number, data: any) => agent.put<any>(`InvoiceLayout/${id}`, data),
+    delete: (id: number) => agent.delete<any>(`InvoiceLayout/${id}`),
+    setDefault: (id: number) => agent.post<any>(`InvoiceLayout/${id}/default`, {}),
+  },
+
   // Recurring Invoice APIs
   recurringInvoices: {
     getList: () => agent.get<any[]>('RecurringInvoice'),

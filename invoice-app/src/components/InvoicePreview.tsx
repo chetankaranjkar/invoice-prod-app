@@ -127,6 +127,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         accountNumber: (userProfile as any).bankAccountNo || userProfile.accountNumber,
         ifscCode: userProfile.ifscCode,
         panNumber: userProfile.panNumber,
+        membershipNo: userProfile.membershipNo,
+        gstpNumber: userProfile.gstpNumber,
         City: userProfile.city,
         State: userProfile.state,
         Zip: userProfile.zip,
@@ -641,6 +643,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
 
             sanitizeStyleTags(clonedDoc);
             sanitizeInlineStyles(element);
+            const pdfRoot = element.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
+            const fontTarget = pdfRoot ?? element;
+            fontTarget.style.fontSize = '1.15em';
+            fontTarget.style.lineHeight = '1.3';
 
             // Convert modern color functions to RGB in the cloned document
             const convertColorsInClone = (el: HTMLElement) => {
@@ -1047,7 +1053,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           Download PDF
         </button>
       </div>
-      <div ref={invoiceRef} className="print-area w-full h-full bg-white">
+      <div ref={invoiceRef} data-pdf-root="true" className="print-area w-full h-full bg-white">
         <header className="invoice-header flex flex-col sm:flex-row justify-between items-stretch px-2 pt-2 bg-white">
           <div className="flex flex-col w-full sm:w-[50%] border-b-2 border-b-[#505050] pb-2">
             <h1 className="py-2 mb-2 text-lg sm:text-xl md:text-2xl"><strong>Invoice</strong></h1>
