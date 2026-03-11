@@ -20,14 +20,18 @@ namespace InvoiceApp.Api.Controllers
         private readonly ILogger<UserManagementController> _logger;
         private readonly IAuditService _auditService;
 
+        private readonly IUserService _userService;
+
         public UserManagementController(
             IUserManagementService userManagementService, 
             IUserContext userContext,
+            IUserService userService,
             ILogger<UserManagementController> logger,
             IAuditService auditService)
         {
             _userManagementService = userManagementService;
             _userContext = userContext;
+            _userService = userService;
             _logger = logger;
             _auditService = auditService;
         }
@@ -64,7 +68,7 @@ namespace InvoiceApp.Api.Controllers
 
                 var user = await _userManagementService.CreateUserAsync(createUserDto, currentUserId.Value, currentUserRole);
                 if (user == null)
-                    return BadRequest("Failed to create user");
+                    return BadRequest(new { message = "Failed to create user" });
 
                 // Audit log
                 await _auditService.LogActionAsync(
@@ -85,17 +89,16 @@ namespace InvoiceApp.Api.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (InvalidOperationException ex)
             {
-                // Handle duplicate email or other validation errors
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating user");
-                return StatusCode(500, "An error occurred while creating user");
+                return StatusCode(500, new { message = "An error occurred while creating user" });
             }
         }
 
@@ -114,7 +117,7 @@ namespace InvoiceApp.Api.Controllers
                 
                 var user = await _userManagementService.UpdateUserAsync(userId, updateUserDto, currentUserId.Value, currentUserRole);
                 if (user == null)
-                    return NotFound("User not found or you don't have permission to update this user");
+                    return NotFound(new { message = "User not found or you don't have permission to update this user" });
 
                 // Audit log
                 await _auditService.LogActionAsync(
@@ -136,12 +139,12 @@ namespace InvoiceApp.Api.Controllers
             catch (InvalidOperationException ex)
             {
                 // Handle duplicate email or other validation errors
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating user");
-                return StatusCode(500, "An error occurred while updating user");
+                return StatusCode(500, new { message = "An error occurred while updating user" });
             }
         }
 
@@ -160,7 +163,7 @@ namespace InvoiceApp.Api.Controllers
 
                 var result = await _userManagementService.DeleteUserAsync(userId, currentUserId.Value, currentUserRole);
                 if (!result)
-                    return NotFound("User not found or you don't have permission to delete this user");
+                    return NotFound(new { message = "User not found or you don't have permission to delete this user" });
 
                 // Audit log
                 await _auditService.LogActionAsync(
@@ -182,7 +185,7 @@ namespace InvoiceApp.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting user");
-                return StatusCode(500, "An error occurred while deleting user");
+                return StatusCode(500, new { message = "An error occurred while deleting user" });
             }
         }
 
@@ -198,7 +201,7 @@ namespace InvoiceApp.Api.Controllers
 
                 var user = await _userManagementService.GetUserByIdAsync(userId, currentUserId.Value, currentUserRole);
                 if (user == null)
-                    return NotFound("User not found or you don't have permission to view this user");
+                    return NotFound(new { message = "User not found or you don't have permission to view this user" });
 
                 return Ok(user);
             }
@@ -206,6 +209,41 @@ namespace InvoiceApp.Api.Controllers
             {
                 _logger.LogError(ex, "Error getting user");
                 return StatusCode(500, "An error occurred while retrieving user");
+            }
+        }
+
+        [HttpGet("users/{userId}/profile")]
+        public async Task<ActionResult<UserProfileDto>> GetUserProfile(Guid userId)
+        {
+            try
+            {
+                var currentUserId = _userContext.GetCurrentUserId();
+                var currentUserRole = _userContext.GetCurrentUserRole();
+                if (currentUserId == null || string.IsNullOrEmpty(currentUserRole))
+                    return Unauthorized("User not authenticated");
+
+                var canAccess = userId == currentUserId.Value;
+                if (!canAccess && currentUserRole == "MasterUser")
+                    canAccess = true;
+                if (!canAccess && currentUserRole == "Admin")
+                {
+                    var createdIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(currentUserId.Value);
+                    canAccess = createdIds.Contains(userId);
+                }
+
+                if (!canAccess)
+                    return Forbid("You can only view profiles of users you created or yourself.");
+
+                var profile = await _userService.GetUserProfileAsync(userId);
+                if (profile == null)
+                    return NotFound(new { message = "User profile not found" });
+
+                return Ok(profile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting user profile");
+                return StatusCode(500, "An error occurred while retrieving user profile");
             }
         }
     }

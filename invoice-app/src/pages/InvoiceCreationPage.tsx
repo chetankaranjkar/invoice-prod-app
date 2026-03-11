@@ -5,25 +5,93 @@ import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvo
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/agent';
-import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
-import { calculateGST, generateInvoiceNumber } from '../utils/helpers';
+import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus, InvoiceLayoutConfigDto, CompanyInfo } from '../types';
+import { calculateGST, getFinancialYearString, parseLocalDate, getApiErrorMessage } from '../utils/helpers';
+
+interface UserOption {
+  id: string;
+  name: string;
+  email: string;
+  businessName?: string;
+  address?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  taxPractitionerTitle?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}
+
+/** Get value from API response - handles both camelCase and PascalCase */
+function getProp<T = string>(obj: Record<string, unknown>, camel: string, pascal: string): T | undefined {
+  const v = obj[camel] ?? obj[pascal];
+  return v as T | undefined;
+}
+
+function userProfileToCompanyInfo(p: Record<string, unknown>): CompanyInfo {
+  return {
+    name: (getProp(p, 'name', 'Name') as string) ?? '',
+    email: getProp(p, 'email', 'Email') as string | undefined,
+    businessName: getProp(p, 'businessName', 'BusinessName') as string | undefined,
+    gstNumber: getProp(p, 'gstNumber', 'GstNumber') as string | undefined,
+    address: getProp(p, 'address', 'Address') as string | undefined,
+    bankName: getProp(p, 'bankName', 'BankName') as string | undefined,
+    accountNumber: (getProp(p, 'bankAccountNo', 'BankAccountNo') ?? getProp(p, 'accountNumber', 'AccountNumber')) as string | undefined,
+    ifscCode: getProp(p, 'ifscCode', 'IfscCode') as string | undefined,
+    panNumber: getProp(p, 'panNumber', 'PanNumber') as string | undefined,
+    membershipNo: getProp(p, 'membershipNo', 'MembershipNo') as string | undefined,
+    gstpNumber: getProp(p, 'gstpNumber', 'GstpNumber') as string | undefined,
+    City: (getProp(p, 'city', 'City') ?? getProp(p, 'City', 'city')) as string | undefined,
+    State: (getProp(p, 'state', 'State') ?? getProp(p, 'State', 'state')) as string | undefined,
+    Zip: (getProp(p, 'zip', 'Zip') ?? getProp(p, 'Zip', 'zip')) as string | undefined,
+    phone: getProp(p, 'phone', 'Phone') as string | undefined,
+    logoUrl: getProp(p, 'logoUrl', 'LogoUrl') as string | undefined,
+    headerLogoBgColor: getProp(p, 'headerLogoBgColor', 'HeaderLogoBgColor') as string | undefined,
+    addressSectionBgColor: getProp(p, 'addressSectionBgColor', 'AddressSectionBgColor') as string | undefined,
+    headerLogoTextColor: getProp(p, 'headerLogoTextColor', 'HeaderLogoTextColor') as string | undefined,
+    addressSectionTextColor: getProp(p, 'addressSectionTextColor', 'AddressSectionTextColor') as string | undefined,
+    gpayNumber: getProp(p, 'gpayNumber', 'GpayNumber') as string | undefined,
+    taxPractitionerTitle: getProp(p, 'taxPractitionerTitle', 'TaxPractitionerTitle') as string | undefined,
+  };
+}
 
 export const InvoiceCreationPage: React.FC = () => {
   const { profile, loadProfile } = useAuth();
   const userRole = profile?.role || 'User';
+  const isAdmin = userRole === 'Admin';
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
-  const [dueDate, setDueDate] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Unpaid');
   const [initialPayment, setInitialPayment] = useState<number>(0);
-  const [invoiceNumber, setInvoiceNumber] = useState('INV00001');
+  const [invoicePrefix, setInvoicePrefix] = useState<string>('INV');
+  const [invoiceNumberNumeric, setInvoiceNumberNumeric] = useState<number>(1);
+  const [invoiceNumberError, setInvoiceNumberError] = useState<string>('');
+
+  const handleInvoiceNumberNumericChange: React.Dispatch<React.SetStateAction<number>> = (value) => {
+    setInvoiceNumberNumeric(typeof value === 'function' ? value(invoiceNumberNumeric) : value);
+    setInvoiceNumberError('');
+  };
+
+  /** Build full invoice number: prefix + number (as entered) + FY (from invoiceDate) */
+  const fullInvoiceNumber = `${invoicePrefix}${invoiceNumberNumeric} / ${getFinancialYearString(invoiceDate ? parseLocalDate(invoiceDate) : new Date())}`;
   const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
 
   const [items, setItems] = useState<Partial<InvoiceItem>[]>([
     { productName: '', quantity: 1, rate: 0, gstPercentage: 18 },
   ]);
+
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [selectedUserForInvoice, setSelectedUserForInvoice] = useState<string | null>(null);
+  const [companyInfoForPreview, setCompanyInfoForPreview] = useState<CompanyInfo | null>(null);
+  const [companyInfoLoading, setCompanyInfoLoading] = useState(false);
 
   useEffect(() => {
     if (profile?.defaultGstPercentage !== undefined && profile?.defaultGstPercentage !== null) {
@@ -35,19 +103,132 @@ export const InvoiceCreationPage: React.FC = () => {
     if (userRole !== 'MasterUser') {
       loadCustomers();
     }
-  }, [userRole]);
+  }, [userRole, selectedUserForInvoice]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadUsers();
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin && users.length > 0 && !selectedUserForInvoice && profile?.id) {
+      setSelectedUserForInvoice(profile.id);
+    }
+  }, [isAdmin, users, selectedUserForInvoice, profile?.id]);
 
   useEffect(() => {
     loadInvoiceLayouts();
   }, []);
 
+  useEffect(() => {
+    const loadPrefix = async () => {
+      let p = profile;
+      if (isAdmin && selectedUserForInvoice && selectedUserForInvoice !== profile?.id) {
+        try {
+          const res = await api.user.getProfileById(selectedUserForInvoice);
+          p = res.data;
+        } catch {
+          p = profile;
+        }
+      }
+      setInvoicePrefix(p?.invoicePrefix || 'INV');
+    };
+    loadPrefix();
+  }, [profile?.invoicePrefix, profile?.id, isAdmin, selectedUserForInvoice]);
+
+  useEffect(() => {
+    if (selectedUserForInvoice && isAdmin) {
+      setCompanyInfoForPreview(null);
+      setCompanyInfoLoading(true);
+      const fallbackFromUsersList = () => {
+        const u = users.find((x) => x.id === selectedUserForInvoice);
+        if (u) {
+          setCompanyInfoForPreview({
+            name: u.name,
+            email: u.email,
+            businessName: u.businessName,
+            address: u.address,
+            headerLogoBgColor: u.headerLogoBgColor,
+            addressSectionBgColor: u.addressSectionBgColor,
+            headerLogoTextColor: u.headerLogoTextColor,
+            addressSectionTextColor: u.addressSectionTextColor,
+            taxPractitionerTitle: u.taxPractitionerTitle,
+            membershipNo: u.membershipNo,
+            gstpNumber: u.gstpNumber,
+            phone: u.phone,
+            City: u.city,
+            State: u.state,
+            Zip: u.zip,
+          });
+        } else {
+          setCompanyInfoForPreview(null);
+        }
+      };
+      api.user.getProfileById(selectedUserForInvoice)
+        .then((r) => {
+          const data = r.data;
+          const profileObj = (data && typeof data === 'object'
+            ? (('data' in data && data.data && typeof data.data === 'object') ? data.data : data)
+            : {}) as Record<string, unknown>;
+          setCompanyInfoForPreview(userProfileToCompanyInfo(profileObj));
+        })
+        .catch(() => {
+          api.userManagement.getUserById(selectedUserForInvoice)
+            .then((r) => {
+              const u = (r.data || {}) as Record<string, unknown>;
+              setCompanyInfoForPreview(userProfileToCompanyInfo(u));
+            })
+            .catch(() => fallbackFromUsersList());
+        })
+        .finally(() => setCompanyInfoLoading(false));
+    } else {
+      setCompanyInfoForPreview(null);
+      setCompanyInfoLoading(false);
+    }
+  }, [selectedUserForInvoice, isAdmin, users]);
+
+  const loadUsers = async () => {
+    try {
+      const response = await api.userManagement.getAllUsers();
+      const list = response.data || [];
+      setUsers(list.map((u: Record<string, unknown>) => ({
+        id: String(getProp(u, 'id', 'Id') ?? ''),
+        name: String(getProp(u, 'name', 'Name') ?? ''),
+        email: String(getProp(u, 'email', 'Email') ?? ''),
+        businessName: getProp(u, 'businessName', 'BusinessName') as string | undefined,
+        address: getProp(u, 'address', 'Address') as string | undefined,
+        headerLogoBgColor: getProp(u, 'headerLogoBgColor', 'HeaderLogoBgColor') as string | undefined,
+        addressSectionBgColor: getProp(u, 'addressSectionBgColor', 'AddressSectionBgColor') as string | undefined,
+        headerLogoTextColor: getProp(u, 'headerLogoTextColor', 'HeaderLogoTextColor') as string | undefined,
+        addressSectionTextColor: getProp(u, 'addressSectionTextColor', 'AddressSectionTextColor') as string | undefined,
+        taxPractitionerTitle: getProp(u, 'taxPractitionerTitle', 'TaxPractitionerTitle') as string | undefined,
+        membershipNo: getProp(u, 'membershipNo', 'MembershipNo') as string | undefined,
+        gstpNumber: getProp(u, 'gstpNumber', 'GstpNumber') as string | undefined,
+        phone: getProp(u, 'phone', 'Phone') as string | undefined,
+        city: getProp(u, 'city', 'City') as string | undefined,
+        state: getProp(u, 'state', 'State') as string | undefined,
+        zip: getProp(u, 'zip', 'Zip') as string | undefined,
+      })));
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    }
+  };
+
   const loadCustomers = async () => {
     try {
-      const response = await api.customers.getList();
+      const response = isAdmin && selectedUserForInvoice
+        ? await api.customers.getList(selectedUserForInvoice)
+        : await api.customers.getList();
       setCustomers(response.data);
+      setSelectedCustomer(null);
     } catch (error) {
       console.error('Failed to load customers:', error);
     }
+  };
+
+  const handleUserForInvoiceChange = (userId: string) => {
+    setSelectedUserForInvoice(userId || null);
   };
 
   const loadInvoiceLayouts = async () => {
@@ -65,6 +246,7 @@ export const InvoiceCreationPage: React.FC = () => {
   };
 
   const handleInvoiceCreate = async (invoiceData: CreateInvoiceDto) => {
+    setInvoiceNumberError('');
     try {
       await api.invoices.create(invoiceData);
       alert('Invoice created successfully!');
@@ -74,13 +256,18 @@ export const InvoiceCreationPage: React.FC = () => {
       const refreshed = await loadProfile();
       const defaultGst = refreshed?.defaultGstPercentage ?? 18;
       setItems([{ productName: '', quantity: 1, rate: 0, gstPercentage: defaultGst }]);
-      setDueDate('');
+      setInvoiceDate(new Date().toISOString().split('T')[0]);
       setPaymentStatus('Unpaid');
       setInitialPayment(0);
       await generateNextInvoiceNumber();
     } catch (error: any) {
       console.error('Failed to create invoice:', error);
-      alert(`Failed to create invoice: ${error.response?.data?.message || 'Please try again.'}`);
+      const msg = getApiErrorMessage(error, 'Please try again.');
+      if (msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate')) {
+        setInvoiceNumberError(msg);
+      } else {
+        alert(`Failed to create invoice: ${msg}`);
+      }
     }
   };
 
@@ -104,38 +291,56 @@ export const InvoiceCreationPage: React.FC = () => {
   const generateNextInvoiceNumber = async () => {
     try {
       let p = profile;
-      if (!p?.invoicePrefix) p = await loadProfile();
-      const invoicePrefix = p?.invoicePrefix || 'INV';
+      if (isAdmin && selectedUserForInvoice && selectedUserForInvoice !== profile?.id) {
+        try {
+          const res = await api.user.getProfileById(selectedUserForInvoice);
+          p = res.data;
+        } catch {
+          p = profile;
+        }
+      }
+      if (!p?.invoicePrefix) {
+        p = await loadProfile();
+      }
+      const prefix = p?.invoicePrefix || 'INV';
+      const fy = getFinancialYearString(invoiceDate ? parseLocalDate(invoiceDate) : new Date());
+      const fySuffix = ` / ${fy}`;
 
-      // Get all invoices to find the latest one
+      setInvoicePrefix(prefix);
+
       const invoicesResponse = await api.invoices.getList();
       const invoices = invoicesResponse.data || [];
 
-      // Find the latest invoice with the same prefix
-      const invoicesWithPrefix = invoices
-        .filter((inv: any) => inv.invoiceNumber && inv.invoiceNumber.startsWith(invoicePrefix))
-        .sort((a: any, b: any) => {
-          // Extract number part and sort
-          const numA = parseInt(a.invoiceNumber.replace(invoicePrefix, '')) || 0;
-          const numB = parseInt(b.invoiceNumber.replace(invoicePrefix, '')) || 0;
-          return numB - numA;
-        });
+      // Target user: when admin creates on behalf of another user, use that user; otherwise current user
+      const targetUserId = (isAdmin && selectedUserForInvoice) ? selectedUserForInvoice : profile?.id;
+
+      // Only consider invoices for the TARGET USER with same prefix AND current FY (format: INV0001 / 2024-25)
+      const invoicesThisFy = invoices.filter(
+        (inv: any) => {
+          const invUserId = inv.userId ?? inv.UserId;
+          if (targetUserId && invUserId !== targetUserId) return false;
+          return (
+            inv.invoiceNumber &&
+            inv.invoiceNumber.startsWith(prefix) &&
+            inv.invoiceNumber.endsWith(fySuffix)
+          );
+        }
+      );
 
       let nextNumber = 1;
-      if (invoicesWithPrefix.length > 0) {
-        const latestInvoice = invoicesWithPrefix[0];
-        const lastNumberStr = latestInvoice.invoiceNumber.replace(invoicePrefix, '');
-        const lastNumber = parseInt(lastNumberStr) || 0;
-        nextNumber = lastNumber + 1;
+      if (invoicesThisFy.length > 0) {
+        const numbers = invoicesThisFy.map((inv: any) => {
+          const mid = inv.invoiceNumber.slice(prefix.length).replace(fySuffix, '').trim();
+          return parseInt(mid, 10) || 0;
+        }).filter((n: number) => n > 0);
+        nextNumber = numbers.length > 0 ? Math.max(...numbers) + 1 : 1;
       }
 
-      // Generate new invoice number
-      const newInvoiceNumber = generateInvoiceNumber(invoicePrefix, nextNumber);
-      setInvoiceNumber(newInvoiceNumber);
+      setInvoiceNumberNumeric(nextNumber);
     } catch (error) {
       console.error('Failed to generate invoice number:', error);
-      // Fallback to default
-      setInvoiceNumber('INV00001');
+      setInvoicePrefix('INV');
+      setInvoiceNumberNumeric(1);
     }
   };
 
@@ -203,10 +408,33 @@ export const InvoiceCreationPage: React.FC = () => {
     resolvedLayoutConfig?.sections?.some((section: any) => section.visible !== false)
   );
 
+  const onBehalfOfUserId = isAdmin && selectedUserForInvoice && selectedUserForInvoice !== profile?.id
+    ? selectedUserForInvoice
+    : undefined;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-2 sm:p-3 md:p-4">
-      <div className="max-w-8xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-2 sm:p-3 md:p-4 min-w-0 overflow-x-hidden">
+      <div className="max-w-8xl mx-auto min-w-0 w-full">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 sm:mb-4 md:mb-6">Create Invoice</h1>
+
+        {isAdmin && users.length > 0 && (
+          <div className="mb-4 min-w-0 w-full">
+            <label htmlFor="create-on-behalf-of" className="block text-sm font-medium text-gray-700 mb-1">Create invoice on behalf of</label>
+            <select
+              id="create-on-behalf-of"
+              value={selectedUserForInvoice ?? ''}
+              onChange={(e) => handleUserForInvoiceChange(e.target.value)}
+              className="border rounded-md px-3 py-2 text-sm w-full min-w-0 max-w-full"
+              aria-label="Select user to create invoice on behalf of"
+            >
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name} ({u.email}){u.id === profile?.id ? ' (Myself)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6">
           {/* Left Side - Invoice Form */}
@@ -218,12 +446,17 @@ export const InvoiceCreationPage: React.FC = () => {
               handleSelectedCustomer={handleSelectedCustomer}
               items={items}
               setItems={setItems}
-              dueDate={dueDate}
-              setDueDate={setDueDate}
+              invoicePrefix={invoicePrefix}
+              invoiceNumberNumeric={invoiceNumberNumeric}
+              setInvoiceNumberNumeric={handleInvoiceNumberNumericChange}
+              invoiceNumberError={invoiceNumberError}
+              invoiceDate={invoiceDate}
+              setInvoiceDate={setInvoiceDate}
               paymentStatus={paymentStatus}
               setPaymentStatus={setPaymentStatus}
               initialPayment={initialPayment}
               setInitialPayment={setInitialPayment}
+              onBehalfOfUserId={onBehalfOfUserId}
             />
           </div>
 
@@ -256,29 +489,36 @@ export const InvoiceCreationPage: React.FC = () => {
                 <TaxInvoice
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
-                  invoiceNumber={invoiceNumber}
+                  invoiceDate={invoiceDate}
+                  invoiceNumber={fullInvoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={companyInfoForPreview ?? undefined}
+                  forceUseCompanyInfo={isAdmin && !!selectedUserForInvoice}
+                  companyInfoLoading={companyInfoLoading}
                 />
               ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
                 <InvoicePreview
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
-                  invoiceNumber={invoiceNumber}
+                  invoiceDate={invoiceDate}
+                  invoiceNumber={fullInvoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={companyInfoForPreview ?? undefined}
+                  forceUseCompanyInfo={isAdmin && !!selectedUserForInvoice}
                 />
               ) : (
                 <DynamicInvoiceRenderer
                   layout={resolvedLayoutConfig}
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
-                  invoiceNumber={invoiceNumber}
+                  invoiceDate={invoiceDate}
+                  invoiceNumber={fullInvoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={companyInfoForPreview ?? undefined}
+                  forceUseCompanyInfo={isAdmin && !!selectedUserForInvoice}
                 />
               )}
             </div>

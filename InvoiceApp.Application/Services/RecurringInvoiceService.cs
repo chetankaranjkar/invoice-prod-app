@@ -33,9 +33,9 @@ namespace InvoiceApp.Application.Services
 
         public async Task<RecurringInvoiceDto> CreateRecurringInvoiceAsync(Guid userId, CreateRecurringInvoiceDto createDto)
         {
-            // Validate customer belongs to user
+            // Validate customer is accessible to user (owned or shared)
             var customer = await _customerRepository.GetCustomerByIdAsync(createDto.CustomerId, userId);
-            if (customer == null || customer.UserId != userId)
+            if (customer == null)
                 throw new ArgumentException("Customer not found");
 
             // Calculate next generation date
@@ -76,9 +76,9 @@ namespace InvoiceApp.Application.Services
             if (recurringInvoice.UserId != userId)
                 throw new UnauthorizedAccessException("You don't have permission to update this recurring invoice");
 
-            // Validate customer belongs to user
+            // Validate customer is accessible to user (owned or shared)
             var customer = await _customerRepository.GetCustomerByIdAsync(updateDto.CustomerId, userId);
-            if (customer == null || customer.UserId != userId)
+            if (customer == null)
                 throw new ArgumentException("Customer not found");
 
             recurringInvoice.Name = updateDto.Name;

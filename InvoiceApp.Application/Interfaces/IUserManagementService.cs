@@ -12,6 +12,7 @@ namespace InvoiceApp.Application.Interfaces
         Task<bool> DeleteUserAsync(Guid userId, Guid currentUserId, string currentUserRole);
         Task<UserListDto?> UpdateUserAsync(Guid userId, CreateUserDto updateUserDto, Guid currentUserId, string currentUserRole);
         Task<UserListDto?> GetUserByIdAsync(Guid userId, Guid currentUserId, string currentUserRole);
+        Task<List<Guid>> GetUserIdsCreatedByAdminAsync(Guid adminId);
     }
 }
 

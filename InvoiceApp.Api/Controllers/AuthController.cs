@@ -25,7 +25,7 @@ namespace InvoiceApp.Api.Controllers
             var result = await _authService.LoginAsync(loginDto);
 
             if (result == null)
-                return Unauthorized("Invalid email or password");
+                return Unauthorized(new { message = "Invalid email or password" });
 
             return Ok(result);
         }
@@ -38,18 +38,17 @@ namespace InvoiceApp.Api.Controllers
                 var result = await _authService.RegisterAsync(registerDto);
 
                 if (result == null)
-                    return BadRequest("Failed to register user");
+                    return BadRequest(new { message = "Failed to register user" });
 
                 return Ok(result);
             }
             catch (InvalidOperationException ex)
             {
-                // Handle duplicate email
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception)
             {
-                return StatusCode(500, "An error occurred while registering user");
+                return StatusCode(500, new { message = "An error occurred while registering user" });
             }
         }
 

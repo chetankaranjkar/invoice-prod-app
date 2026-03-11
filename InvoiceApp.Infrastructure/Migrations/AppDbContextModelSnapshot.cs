@@ -178,6 +178,21 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.ToTable("Customers");
                 });
 
+            modelBuilder.Entity("InvoiceApp.Domain.Entities.CustomerUser", b =>
+                {
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("CustomerId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("CustomerUsers");
+                });
+
             modelBuilder.Entity("InvoiceApp.Domain.Entities.ErrorLog", b =>
                 {
                     b.Property<int>("Id")
@@ -320,6 +335,9 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("SellerInfoSnapshot")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal>("Sgst")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -347,8 +365,9 @@ namespace InvoiceApp.Infrastructure.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.HasIndex("InvoiceNumber")
-                        .IsUnique();
+                    b.HasIndex("UserId", "InvoiceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Invoices_UserId_InvoiceNumber");
 
                     b.HasIndex("UserId");
 
@@ -695,6 +714,47 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.ToTable("RecurringInvoiceItems");
                 });
 
+            modelBuilder.Entity("InvoiceApp.Domain.Entities.Product", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("DefaultGstPercentage")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("DefaultRate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Products_UserId_Name");
+
+                    b.ToTable("Products");
+                });
+
             modelBuilder.Entity("InvoiceApp.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -704,6 +764,17 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.Property<string>("Address")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("AddressSectionBgColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("AddressSectionFontSize")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AddressSectionTextColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("BankAccountNo")
                         .HasMaxLength(50)
@@ -726,6 +797,10 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DateFormat")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<decimal>("DefaultGstPercentage")
                         .ValueGeneratedOnAdd()
                         .HasPrecision(5, 2)
@@ -742,9 +817,28 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("GpayNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("GstNumber")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("GstpNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("HeaderLogoBgColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("HeaderLogoTextColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("InvoiceHeaderFontSize")
+                        .HasColumnType("int");
 
                     b.Property<string>("IfscCode")
                         .HasMaxLength(20)
@@ -758,27 +852,7 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<string>("HeaderLogoBgColor")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("AddressSectionBgColor")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("HeaderLogoTextColor")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("AddressSectionTextColor")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("GpayNumber")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("TaxPractitionerTitle")
+                    b.Property<string>("MembershipNo")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
@@ -788,14 +862,6 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("PanNumber")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("MembershipNo")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("GstpNumber")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -815,8 +881,17 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.Property<string>("State")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("TaxPractitionerTitle")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("UseDefaultInvoiceFontSizes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("Zip")
                         .HasColumnType("nvarchar(max)");
@@ -838,6 +913,25 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("InvoiceApp.Domain.Entities.CustomerUser", b =>
+                {
+                    b.HasOne("InvoiceApp.Domain.Entities.Customer", "Customer")
+                        .WithMany("SharedWithUsers")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("InvoiceApp.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
 
                     b.Navigation("User");
                 });
@@ -946,6 +1040,17 @@ namespace InvoiceApp.Infrastructure.Migrations
                     b.Navigation("RecurringInvoice");
                 });
 
+            modelBuilder.Entity("InvoiceApp.Domain.Entities.Product", b =>
+                {
+                    b.HasOne("InvoiceApp.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("InvoiceApp.Domain.Entities.User", b =>
                 {
                     b.HasOne("InvoiceApp.Domain.Entities.User", "CreatedByNavigation")
@@ -959,6 +1064,8 @@ namespace InvoiceApp.Infrastructure.Migrations
             modelBuilder.Entity("InvoiceApp.Domain.Entities.Customer", b =>
                 {
                     b.Navigation("Invoices");
+
+                    b.Navigation("SharedWithUsers");
                 });
 
             modelBuilder.Entity("InvoiceApp.Domain.Entities.Invoice", b =>

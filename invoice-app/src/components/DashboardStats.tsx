@@ -1,20 +1,26 @@
 import React from 'react';
-import { IndianRupee, Users, FileText, AlertCircle } from 'lucide-react';
+import { IndianRupee, Users, FileText, AlertCircle, Wallet } from 'lucide-react';
 import type { DashboardStats as DashboardStatsType } from '../types';
 import { formatCurrency } from '../utils/helpers';
 
 interface DashboardStatsProps {
   stats: DashboardStatsType;
+  userRole?: string;
   onViewPaid: () => void;
   onViewUnpaid: () => void;
   onViewPending?: () => void;
+  onViewPendingByUser?: () => void;
+  onViewAllCustomers?: () => void;
 }
 
 export const DashboardStats: React.FC<DashboardStatsProps> = ({
   stats,
+  userRole,
   onViewPaid,
   onViewUnpaid,
   onViewPending,
+  onViewPendingByUser,
+  onViewAllCustomers,
 }) => {
   const statCards = [
     {
@@ -22,14 +28,27 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
       value: formatCurrency(stats.totalPendingAmount),
       icon: IndianRupee,
       color: 'bg-red-500',
-      onClick: onViewPending,
-      clickable: !!onViewPending,
+      onClick: onViewPendingByUser ?? onViewPending,
+      clickable: !!(onViewPendingByUser ?? onViewPending),
     },
+    // Admin only: show their own pending amount
+    ...(userRole === 'Admin'
+      ? [{
+          title: 'My Pending Amount',
+          value: formatCurrency(stats.adminOwnPendingAmount ?? 0),
+          icon: Wallet,
+          color: 'bg-indigo-500',
+          onClick: onViewPending,
+          clickable: !!onViewPending,
+        }]
+      : []),
     {
       title: 'Total Customers',
       value: stats.totalCustomers.toString(),
       icon: Users,
       color: 'bg-blue-500',
+      onClick: onViewAllCustomers,
+      clickable: !!onViewAllCustomers,
     },
     {
       title: 'Paid Customers',
@@ -51,8 +70,9 @@ export const DashboardStats: React.FC<DashboardStatsProps> = ({
 
 
 
+  const cardCount = statCards.length;
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+    <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8 ${cardCount <= 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-5'}`}>
       {statCards.map((card, index) => {
         const Icon = card.icon;
         return (

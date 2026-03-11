@@ -3,6 +3,7 @@ import { X, User, Building, Upload, Save, Trash2, Image, FileText, CreditCard, R
 import type { UserProfile, UpdateUserProfileDto } from '../types';
 import { api } from '../services/agent';
 import { useTheme } from '../contexts/ThemeContext';
+import { getApiErrorMessage } from '../utils/helpers';
 
 type TabId = 'general' | 'tax' | 'bank' | 'invoice' | 'appearance';
 
@@ -65,6 +66,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         addressSectionBgColor: response.data.addressSectionBgColor,
         headerLogoTextColor: response.data.headerLogoTextColor,
         addressSectionTextColor: response.data.addressSectionTextColor,
+        invoiceHeaderFontSize: response.data.invoiceHeaderFontSize ?? 12,
+        addressSectionFontSize: response.data.addressSectionFontSize ?? 14,
+        useDefaultInvoiceFontSizes: response.data.useDefaultInvoiceFontSizes ?? true,
+        dateFormat: response.data.dateFormat || 'DD/MM/YYYY',
         gpayNumber: response.data.gpayNumber,
         invoicePrefix: response.data.invoicePrefix || 'INV',
         defaultGstPercentage: response.data.defaultGstPercentage ?? 18,
@@ -141,14 +146,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         taxPractitionerTitle: formData.taxPractitionerTitle ?? '',
         invoicePrefix: formData.invoicePrefix || 'INV',
         defaultGstPercentage: formData.defaultGstPercentage ?? 18,
-        disableQuantity: formData.disableQuantity || false
+        disableQuantity: formData.disableQuantity || false,
+        invoiceHeaderFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.invoiceHeaderFontSize ?? 12),
+        addressSectionFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.addressSectionFontSize ?? 14),
+        useDefaultInvoiceFontSizes: formData.useDefaultInvoiceFontSizes ?? true,
+        dateFormat: formData.dateFormat || 'DD/MM/YYYY',
       };
       const response = await api.user.updateProfileWithLogo(profileData, logoFile || undefined);
       onProfileUpdate(response.data);
       onClose();
     } catch (err: any) {
       console.error('❌ Profile update failed:', err);
-      setError(err.response?.data?.message || 'Failed to update profile');
+      setError(getApiErrorMessage(err, 'Failed to update profile'));
     } finally {
       setLoading(false);
     }
@@ -268,6 +277,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <label className={labelClass}>Phone</label>
                     <input type="tel" name="phone" value={formData.phone || ''} onChange={handleInputChange} className={inputClass} placeholder="+91 9876543210" />
                   </div>
+                  <div>
+                    <label className={labelClass}>Date Format</label>
+                    <select
+                      name="dateFormat"
+                      value={formData.dateFormat || 'DD/MM/YYYY'}
+                      onChange={(e) => setFormData(prev => ({ ...prev, dateFormat: e.target.value }))}
+                      className={inputClass}
+                      title="Date format used in invoices, dashboard, and across the app"
+                      aria-label="Select date format"
+                    >
+                      <option value="DD/MM/YYYY">DD/MM/YYYY (e.g. 15/03/2024)</option>
+                      <option value="MM/DD/YYYY">MM/DD/YYYY (e.g. 03/15/2024)</option>
+                      <option value="YYYY-MM-DD">YYYY-MM-DD (e.g. 2024-03-15)</option>
+                      <option value="DD-MM-YYYY">DD-MM-YYYY (e.g. 15-03-2024)</option>
+                      <option value="MM-DD-YYYY">MM-DD-YYYY (e.g. 03-15-2024)</option>
+                      <option value="DD-MMM-yyyy">DD-MMM-yyyy (e.g. 15-Mar-2024)</option>
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">Used in invoices, dashboard, and across the app</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -362,28 +390,73 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
             {/* Appearance Tab */}
             {activeTab === 'appearance' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-800">Invoice Header</h3>
-                  <div>
-                    <label className={labelClass} id="headerLogoBg">Logo Background</label>
-                    <input type="color" name="headerLogoBgColor" value={formData.headerLogoBgColor || '#ffffff'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="headerLogoBg" title="Header logo background color" />
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-800">Invoice Header</h3>
+                    <div>
+                      <label className={labelClass} id="headerLogoBg">Logo Background</label>
+                      <input type="color" name="headerLogoBgColor" value={formData.headerLogoBgColor || '#ffffff'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="headerLogoBg" title="Header logo background color" />
+                    </div>
+                    <div>
+                      <label className={labelClass} id="headerLogoText">Logo Text</label>
+                      <input type="color" name="headerLogoTextColor" value={formData.headerLogoTextColor || '#111111'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="headerLogoText" title="Header logo text color" />
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelClass} id="headerLogoText">Logo Text</label>
-                    <input type="color" name="headerLogoTextColor" value={formData.headerLogoTextColor || '#111111'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="headerLogoText" title="Header logo text color" />
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-800">Address Section</h3>
+                    <div>
+                      <label className={labelClass} id="addressBg">Background</label>
+                      <input type="color" name="addressSectionBgColor" value={formData.addressSectionBgColor || '#ffffff'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="addressBg" title="Address section background color" />
+                    </div>
+                    <div>
+                      <label className={labelClass} id="addressText">Text Color</label>
+                      <input type="color" name="addressSectionTextColor" value={formData.addressSectionTextColor || '#111111'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="addressText" title="Address section text color" />
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-800">Address Section</h3>
-                  <div>
-                    <label className={labelClass} id="addressBg">Background</label>
-                    <input type="color" name="addressSectionBgColor" value={formData.addressSectionBgColor || '#ffffff'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="addressBg" title="Address section background color" />
-                  </div>
-                  <div>
-                    <label className={labelClass} id="addressText">Text Color</label>
-                    <input type="color" name="addressSectionTextColor" value={formData.addressSectionTextColor || '#111111'} onChange={handleInputChange} className="h-10 w-full rounded border border-gray-300 cursor-pointer" aria-labelledby="addressText" title="Address section text color" />
-                  </div>
+                <div className="border-t pt-6 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-800">Invoice Header & Address Font Sizes</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.useDefaultInvoiceFontSizes ?? true}
+                      onChange={(e) => setFormData(prev => ({ ...prev, useDefaultInvoiceFontSizes: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Use default font sizes</span>
+                  </label>
+                  <p className="text-xs text-gray-500">When checked, uses current sizes (12px header, 14px address). Uncheck to customize.</p>
+                  {!(formData.useDefaultInvoiceFontSizes ?? true) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelClass}>Invoice Header Font Size</label>
+                        <select
+                          name="invoiceHeaderFontSize"
+                          value={formData.invoiceHeaderFontSize ?? 12}
+                          onChange={(e) => setFormData(prev => ({ ...prev, invoiceHeaderFontSize: Number(e.target.value) }))}
+                          className={inputClass}
+                        >
+                          {[8, 10, 12, 14, 16].map((px) => (
+                            <option key={px} value={px}>{px}px</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Address Section Font Size</label>
+                        <select
+                          name="addressSectionFontSize"
+                          value={formData.addressSectionFontSize ?? 14}
+                          onChange={(e) => setFormData(prev => ({ ...prev, addressSectionFontSize: Number(e.target.value) }))}
+                          className={inputClass}
+                        >
+                          {[8, 10, 12, 14, 16].map((px) => (
+                            <option key={px} value={px}>{px}px</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

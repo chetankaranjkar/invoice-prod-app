@@ -9,8 +9,8 @@ COPY InvoiceApp.Application/InvoiceApp.Application.csproj ./InvoiceApp.Applicati
 COPY InvoiceApp.Domain/InvoiceApp.Domain.csproj ./InvoiceApp.Domain/
 COPY InvoiceApp.Infrastructure/InvoiceApp.Infrastructure.csproj ./InvoiceApp.Infrastructure/
 
-# Restore dependencies
-RUN dotnet restore InvoiceApp.sln
+# Restore dependencies (API project only - excludes InvoiceApp.Tests)
+RUN dotnet restore InvoiceApp.Api/InvoiceApp.Api.csproj
 
 # Copy all source code
 COPY InvoiceApp.Api/ ./InvoiceApp.Api/

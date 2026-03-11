@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CompanyInfo, Customer, InvoiceItem } from '../../../types';
+import { useDateFormat } from '../../../hooks/useDateFormat';
 
 interface HeaderSectionProps {
   company: CompanyInfo | null;
@@ -20,13 +21,14 @@ interface HeaderSectionProps {
 }
 
 export const HeaderSection: React.FC<HeaderSectionProps> = ({ company, invoiceNumber, invoiceDate }) => {
+  const formatDate = useDateFormat();
   return (
     <div className="flex flex-col gap-2 border-b border-gray-300 pb-2">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-gray-900">Invoice</h1>
           <p className="text-xs text-gray-700"><strong>Invoice No:</strong> {invoiceNumber}</p>
-          <p className="text-xs text-gray-700"><strong>Invoice Date:</strong> {invoiceDate}</p>
+          <p className="text-xs text-gray-700"><strong>Invoice Date:</strong> {formatDate(invoiceDate)}</p>
         </div>
         {company?.logoUrl ? (
           <img

@@ -31,6 +31,7 @@ namespace InvoiceApp.Infrastructure
             services.AddScoped<IInvoiceTemplateRepository, InvoiceTemplateRepository>();
             services.AddScoped<IInvoiceLayoutRepository, InvoiceLayoutRepository>();
             services.AddScoped<IRecurringInvoiceRepository, RecurringInvoiceRepository>();
+            services.AddScoped<IProductRepository, ProductRepository>();
             services.AddScoped<IAuditLogRepository, AuditLogRepository>();
             services.AddScoped<IErrorLogRepository, ErrorLogRepository>();
 

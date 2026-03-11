@@ -10,6 +10,7 @@ namespace InvoiceApp.Infrastructure.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
         public DbSet<User> Users { get; set; }
         public DbSet<Customer> Customers { get; set; }
+        public DbSet<CustomerUser> CustomerUsers { get; set; }
         public DbSet<Invoice> Invoices { get; set; }
         public DbSet<InvoiceItem> InvoiceItems { get; set; }
         public DbSet<Payment> Payments { get; set; }
@@ -20,6 +21,7 @@ namespace InvoiceApp.Infrastructure.Data
         public DbSet<RecurringInvoice> RecurringInvoices { get; set; }
         public DbSet<RecurringInvoiceItem> RecurringInvoiceItems { get; set; }
         public DbSet<InvoiceLayoutConfig> InvoiceLayoutConfigs { get; set; }
+        public DbSet<Product> Products { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -63,8 +65,12 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(u => u.AddressSectionBgColor).HasMaxLength(20);
                 entity.Property(u => u.HeaderLogoTextColor).HasMaxLength(20);
                 entity.Property(u => u.AddressSectionTextColor).HasMaxLength(20);
+                entity.Property(u => u.InvoiceHeaderFontSize);
+                entity.Property(u => u.AddressSectionFontSize);
+                entity.Property(u => u.UseDefaultInvoiceFontSizes).HasDefaultValue(true);
                 entity.Property(u => u.GpayNumber).HasMaxLength(30);
                 entity.Property(u => u.TaxPractitionerTitle).HasMaxLength(100);
+                entity.Property(u => u.DateFormat).HasMaxLength(20);
                 entity.Property(u => u.InvoicePrefix).HasMaxLength(20); // Invoice prefix
                 entity.Property(u => u.DefaultGstPercentage).HasPrecision(5, 2).HasDefaultValue(18); // Default GST percentage
                 entity.Property(u => u.DisableQuantity).HasDefaultValue(false); // Disable quantity field
@@ -118,6 +124,22 @@ namespace InvoiceApp.Infrastructure.Data
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
+            // CustomerUser (share customer with users)
+            modelBuilder.Entity<CustomerUser>(entity =>
+            {
+                entity.HasKey(cu => new { cu.CustomerId, cu.UserId });
+                entity.HasIndex(cu => cu.UserId);
+
+                entity.HasOne(cu => cu.Customer)
+                    .WithMany(c => c.SharedWithUsers)
+                    .HasForeignKey(cu => cu.CustomerId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(cu => cu.User)
+                    .WithMany()
+                    .HasForeignKey(cu => cu.UserId)
+                    .OnDelete(DeleteBehavior.NoAction); // Avoid multiple cascade paths to Users
+            });
+
             // Invoice configuration
             modelBuilder.Entity<Invoice>(entity =>
             {
@@ -133,8 +155,12 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(i => i.WaveAmount).HasPrecision(18, 2);
                 entity.Property(i => i.BalanceAmount).HasPrecision(18, 2);
                 entity.Property(i => i.Status).HasMaxLength(20);
+                entity.Property(i => i.SellerInfoSnapshot).HasColumnType("nvarchar(max)");
 
-                entity.HasIndex(i => i.InvoiceNumber).IsUnique();
+                // InvoiceNumber unique per user (each user has own sequence: INV0001, INV0002, etc.)
+                entity.HasIndex(i => new { i.UserId, i.InvoiceNumber })
+                      .IsUnique()
+                      .HasDatabaseName("IX_Invoices_UserId_InvoiceNumber");
 
                 entity.HasOne(i => i.User)
                       .WithMany(u => u.Invoices)
@@ -319,6 +345,23 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.HasOne(ri => ri.RecurringInvoice)
                       .WithMany(r => r.RecurringItems)
                       .HasForeignKey(ri => ri.RecurringInvoiceId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // Product configuration (user's product catalog for autocomplete)
+            modelBuilder.Entity<Product>(entity =>
+            {
+                entity.HasKey(p => p.Id);
+                entity.Property(p => p.Name).IsRequired().HasMaxLength(300);
+                entity.Property(p => p.DefaultRate).HasPrecision(18, 2);
+                entity.Property(p => p.DefaultGstPercentage).HasPrecision(5, 2);
+
+                entity.HasIndex(p => p.UserId);
+                entity.HasIndex(p => new { p.UserId, p.Name }).IsUnique();
+
+                entity.HasOne(p => p.User)
+                      .WithMany()
+                      .HasForeignKey(p => p.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
         }

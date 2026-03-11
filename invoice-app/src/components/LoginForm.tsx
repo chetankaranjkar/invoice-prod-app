@@ -3,6 +3,7 @@ import { Lock, User } from 'lucide-react';
 import { api } from '../services/agent';
 import type { LoginDto } from '../types';
 import { isValidEmail, sanitizeString } from '../utils/validation';
+import { getApiErrorMessage } from '../utils/helpers';
 
 interface LoginFormProps {
   onLoginSuccess: () => void;
@@ -56,17 +57,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
       console.error('Login error details:', err);
       
       // Better error handling
-      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        setError('Request timed out. Please check your connection and try again.');
-      } else if (err.code === 'ERR_NETWORK' || !err.response) {
-        setError('Network error. Please check if the API server is running and accessible.');
-      } else if (err.response?.status === 401) {
-        setError(err.response?.data?.message || 'Invalid email or password');
-      } else if (err.response?.status === 500) {
-        setError('Server error. Please try again later.');
-      } else {
-        setError(err.response?.data?.message || err.message || 'Login failed. Please try again.');
-      }
+      setError(getApiErrorMessage(err, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }

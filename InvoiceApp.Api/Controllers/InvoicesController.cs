@@ -67,7 +67,7 @@ namespace InvoiceApp.Api.Controllers
             var invoice = await _invoiceService.GetInvoiceByIdAsync(id, userId.Value, userRole);
 
             if (invoice == null)
-                return NotFound();
+                return NotFound(new { message = "Invoice not found" });
 
             return Ok(invoice);
         }
@@ -120,7 +120,7 @@ namespace InvoiceApp.Api.Controllers
             var result = await _invoiceService.AddPaymentAsync(id, userId.Value, paymentDto, userRole);
 
             if (!result)
-                return NotFound();
+                return NotFound(new { message = "Invoice not found" });
 
             // Audit log
             await _auditService.LogActionAsync(
@@ -181,7 +181,7 @@ namespace InvoiceApp.Api.Controllers
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -189,7 +189,7 @@ namespace InvoiceApp.Api.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 
@@ -207,7 +207,7 @@ namespace InvoiceApp.Api.Controllers
             var deleted = await _invoiceService.DeleteInvoiceAsync(id, userId.Value, userRole);
 
             if (!deleted)
-                return NotFound();
+                return NotFound(new { message = "Invoice not found" });
 
             // Audit log
             await _auditService.LogActionAsync(
@@ -265,7 +265,7 @@ namespace InvoiceApp.Api.Controllers
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (UnauthorizedAccessException ex)
             {

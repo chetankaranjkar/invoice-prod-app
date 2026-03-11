@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useDateFormat } from '../hooks/useDateFormat';
 import { Calendar, Plus, Edit, Trash2, Play, Pause, Clock, CheckCircle2, X } from 'lucide-react';
 import { api } from '../services/agent';
 import type { RecurringInvoiceDto, CreateRecurringInvoiceDto, UpdateRecurringInvoiceDto, Customer, RecurringInvoiceItemDto } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNavigate } from 'react-router-dom';
+import { getApiErrorMessage } from '../utils/helpers';
 
 export const RecurringInvoicesPage: React.FC = () => {
   const { themeColors } = useTheme();
   const navigate = useNavigate();
+  const formatDate = useDateFormat();
   const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoiceDto[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,13 +164,13 @@ export const RecurringInvoicesPage: React.FC = () => {
                   {invoice.nextGenerationDate && (
                     <div className="flex items-center gap-2 text-gray-600">
                       <Clock className="h-4 w-4" />
-                      <span><strong>Next:</strong> {new Date(invoice.nextGenerationDate).toLocaleDateString()}</span>
+                      <span><strong>Next:</strong> {formatDate(invoice.nextGenerationDate)}</span>
                     </div>
                   )}
                   {invoice.lastGeneratedDate && (
                     <div className="flex items-center gap-2 text-gray-600">
                       <CheckCircle2 className="h-4 w-4" />
-                      <span><strong>Last:</strong> {new Date(invoice.lastGeneratedDate).toLocaleDateString()}</span>
+                      <span><strong>Last:</strong> {formatDate(invoice.lastGeneratedDate)}</span>
                     </div>
                   )}
                   <div className="text-gray-600">
@@ -339,7 +342,7 @@ const RecurringInvoiceModal: React.FC<RecurringInvoiceModalProps> = ({
       }
       onSave();
     } catch (error: any) {
-      setError(error.response?.data?.message || 'Failed to save recurring invoice');
+      setError(getApiErrorMessage(error, 'Failed to save recurring invoice'));
     } finally {
       setSaving(false);
     }
@@ -522,6 +525,15 @@ const RecurringInvoiceModal: React.FC<RecurringInvoiceModalProps> = ({
                 <Plus className="h-4 w-4 inline mr-1" />
                 Add Item
               </button>
+            </div>
+
+            {/* Items table header */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 px-3 py-2 bg-gray-100 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 mb-3">
+              <div className="sm:col-span-4">Product Name</div>
+              <div className="sm:col-span-2">Qty</div>
+              <div className="sm:col-span-2">Rate</div>
+              <div className="sm:col-span-2">GST %</div>
+              <div className="sm:col-span-2">Action</div>
             </div>
 
             <div className="space-y-3">

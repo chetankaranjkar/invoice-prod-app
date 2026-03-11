@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, LogOut, Settings, UserCog, ChevronDown, User, History, Database, AlertTriangle, Menu, X, ChevronLeft, ChevronRight, Repeat } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, LogOut, Settings, UserCog, ChevronDown, User, History, Database, AlertTriangle, Menu, X, ChevronLeft, ChevronRight, Repeat, Package } from 'lucide-react';
 import { UserProfileModal } from './UserProfileModal';
 import { ThemeSelector } from './ThemeSelector';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -44,6 +44,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
   const handleProfileUpdate = (updated: UserProfile) => {
     setProfile(updated);
     setShowProfileModal(false);
+    navigate('/dashboard');
   };
 
   const navigation = [
@@ -51,6 +52,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
     // MasterUser cannot create invoices - only manage admins
     ...(userRole !== 'MasterUser' ? [{ name: 'Create Invoice', href: '/invoices', icon: FileText }] : []),
     { name: 'Customers', href: '/customers', icon: Users },
+    ...(userRole !== 'MasterUser' ? [{ name: 'Products', href: '/products', icon: Package }] : []),
     ...(userRole !== 'MasterUser' ? [{ name: 'Recurring Invoices', href: '/recurring-invoices', icon: Repeat }] : []),
     ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'User Management', href: '/users', icon: UserCog }] : []),
     ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'Backup & Restore', href: '/backup', icon: Database }] : []),

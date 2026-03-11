@@ -1,6 +1,7 @@
 using AutoMapper;
 using InvoiceApp.Domain.Entities;
 using InvoiceApp.Application.DTOs;
+using InvoiceApp.Application.Resolvers;
 using System;
 
 namespace InvoiceApp.Application
@@ -9,14 +10,21 @@ namespace InvoiceApp.Application
     {
         public MappingProfile()
         {
-            // Customer mappings
-            CreateMap<Customer, CustomerProfileDto>();
-            CreateMap<CreateCustomerDto, Customer>();
+            // Customer mappings - IsSharedWithMe and SharedWithUserIds set in repository
+            CreateMap<Customer, CustomerProfileDto>()
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.User != null ? src.User.Name : null))
+                .ForMember(dest => dest.UserEmail, opt => opt.MapFrom(src => src.User != null ? src.User.Email : null))
+                .ForMember(dest => dest.IsSharedWithMe, opt => opt.Ignore())
+                .ForMember(dest => dest.SharedWithUserIds, opt => opt.Ignore());
+            CreateMap<CreateCustomerDto, Customer>()
+                .ForMember(dest => dest.SharedWithUsers, opt => opt.Ignore());
 
-            // Invoice mappings
+            // Invoice mappings - SellerInfo from snapshot (at creation) or fallback to User
             CreateMap<Invoice, InvoiceDto>()
                 .ForMember(dest => dest.CustomerName, opt => opt.MapFrom(src => src.Customer != null ? src.Customer.CustomerName : string.Empty))
+                .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.UserId))
                 .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.User != null ? src.User.Name : null))
+                .ForMember(dest => dest.SellerInfo, opt => opt.MapFrom<InvoiceSellerInfoResolver>())
                 .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.InvoiceItems))
                 .ForMember(dest => dest.Payments, opt => opt.MapFrom(src => src.Payments));
 

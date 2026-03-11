@@ -25,6 +25,9 @@ namespace InvoiceApp.Domain.Entities
         public decimal BalanceAmount { get; set; } = 0m;
         public string Status { get; set; } = "Unpaid";
 
+        /// <summary>JSON snapshot of seller/company info at invoice creation. Ensures invoice always shows creator's details as they were when created, even if profile changes later.</summary>
+        public string? SellerInfoSnapshot { get; set; }
+
         public User? User { get; set; }
         public Customer? Customer { get; set; }
         public ICollection<InvoiceItem> InvoiceItems { get; set; } = new List<InvoiceItem>();

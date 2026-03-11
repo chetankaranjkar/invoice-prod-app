@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System;
 using System.Threading.Tasks;
 using InvoiceApp.Application.DTOs;
 using InvoiceApp.Application.Interfaces;
+using InvoiceApp.Infrastructure.Services;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using System.Linq;
@@ -16,45 +17,52 @@ namespace InvoiceApp.Api.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IUserContext _userContext;
+        private readonly IUserManagementService _userManagementService;
         private readonly ILogger<UserController> _logger;
 
-        public UserController(IUserService userService, ILogger<UserController> logger)
+        public UserController(IUserService userService, IUserContext userContext, IUserManagementService userManagementService, ILogger<UserController> logger)
         {
             _userService = userService;
+            _userContext = userContext;
+            _userManagementService = userManagementService;
             _logger = logger;
         }
 
         [HttpGet("profile")]
         public async Task<ActionResult<UserProfileDto>> GetProfile()
         {
-            try
+            var currentUserId = _userContext.GetCurrentUserId();
+            if (currentUserId == null) return Unauthorized("User ID not found in token");
+
+            var profile = await _userService.GetUserProfileAsync(currentUserId.Value);
+            if (profile == null) return NotFound(new { message = "User profile not found" });
+            return Ok(profile);
+        }
+
+        [HttpGet("profile/{userId:guid}")]
+        public async Task<ActionResult<UserProfileDto>> GetProfileById(Guid userId)
+        {
+            var currentUserId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (currentUserId == null) return Unauthorized("User ID not found in token");
+
+            if (userId != currentUserId.Value)
             {
-                _logger.LogInformation("GetProfile called");
-
-                var userId = GetCurrentUserId();
-                _logger.LogInformation($"Extracted UserId: {userId}");
-
-                if (userId == null)
+                if (userRole == "MasterUser") { /* MasterUser can get any profile */ }
+                else if (userRole == "Admin")
                 {
-                    _logger.LogWarning("User ID not found in token");
-                    return Unauthorized("User ID not found in token");
+                    var createdIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(currentUserId.Value);
+                    if (!createdIds.Contains(userId))
+                        return Forbid("You can only view profiles of users you created.");
                 }
-
-                var profile = await _userService.GetUserProfileAsync(userId.Value);
-                if (profile == null)
-                {
-                    _logger.LogWarning($"User profile not found for ID: {userId}");
-                    return NotFound("User profile not found");
-                }
-
-                _logger.LogInformation($"Profile found for user: {profile.Email}");
-                return Ok(profile);
+                else
+                    return Forbid("You can only view your own profile.");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in GetProfile");
-                return StatusCode(500, "An error occurred while retrieving profile");
-            }
+
+            var profile = await _userService.GetUserProfileAsync(userId);
+            if (profile == null) return NotFound(new { message = "User profile not found" });
+            return Ok(profile);
         }
 
         [HttpPut("profile")]
@@ -66,14 +74,14 @@ namespace InvoiceApp.Api.Controllers
                 if (userId == null) return Unauthorized("User ID not found in token");
 
                 var profile = await _userService.UpdateUserProfileAsync(userId.Value, updateDto);
-                if (profile == null) return NotFound("User profile not found");
+                if (profile == null) return NotFound(new { message = "User profile not found" });
 
                 return Ok(profile);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in UpdateProfile");
-                return StatusCode(500, "An error occurred while updating profile");
+                return StatusCode(500, new { message = "An error occurred while updating profile" });
             }
         }
 
@@ -92,21 +100,21 @@ namespace InvoiceApp.Api.Controllers
                 }
 
                 if (logo == null || logo.Length == 0)
-                    return BadRequest("No logo file provided");
+                    return BadRequest(new { message = "No logo file provided" });
 
                 var logoUrl = await _userService.UploadLogoAsync(userId.Value, logo);
-                if (logoUrl == null) return BadRequest("Failed to upload logo");
+                if (logoUrl == null) return BadRequest(new { message = "Failed to upload logo" });
 
                 return Ok(new { logoUrl });
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in UploadLogo");
-                return StatusCode(500, "An error occurred while uploading the logo");
+                return StatusCode(500, new { message = "An error occurred while uploading the logo" });
             }
         }
 
@@ -142,13 +150,13 @@ namespace InvoiceApp.Api.Controllers
                     }
                 }
 
-                if (profile == null) return NotFound("User profile not found");
+                if (profile == null) return NotFound(new { message = "User profile not found" });
 
                 return Ok(profile);
             }
             catch (ArgumentException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {

@@ -10,6 +10,7 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { BackupPage } from './pages/BackupPage';
 import { ErrorLogPage } from './pages/ErrorLogPage';
 import { RecurringInvoicesPage } from './pages/RecurringInvoicesPage';
+import { ProductsPage } from './pages/ProductsPage';
 import { InvoiceLayoutDesignerPage } from './pages/InvoiceLayoutDesignerPage';
 import { Navigation } from './components/Navigation';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -81,6 +82,7 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
           <Route path="/backup" element={<BackupPage />} />
           <Route path="/error-logs" element={<ErrorLogPage />} />
           <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
+          <Route path="/products" element={<ProductsPage />} />
           <Route path="/invoice-layouts" element={<InvoiceLayoutDesignerPage />} />
         </Routes>
       </main>

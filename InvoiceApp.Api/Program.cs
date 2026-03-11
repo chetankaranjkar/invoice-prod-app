@@ -1,4 +1,5 @@
 using InvoiceApp.Application;
+using Newtonsoft.Json.Serialization;
 using InvoiceApp.Infrastructure;
 using InvoiceApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +16,10 @@ using Microsoft.AspNetCore.Http.Features;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers().AddNewtonsoftJson();
+builder.Services.AddControllers().AddNewtonsoftJson(options =>
+{
+    options.SerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
+});
 
 // Configure request size limits for large file uploads (backup restore)
 builder.Services.Configure<FormOptions>(options =>

@@ -6,15 +6,19 @@ import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import { api } from '../services/agent';
 import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { X, Download, Edit, Trash2, Copy, Printer } from 'lucide-react';
+import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useTheme } from '../contexts/ThemeContext';
+import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage } from '../utils/helpers';
+import { useDateFormat } from '../hooks/useDateFormat';
+import { AddPaymentModal } from '../components/AddPaymentModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 export const DashboardPage: React.FC = () => {
   const { themeColors } = useTheme();
+  const formatDate = useDateFormat();
   const [stats, setStats] = useState<DashboardStatsType>({
     totalPendingAmount: 0,
     totalCustomers: 0,
@@ -38,7 +42,30 @@ export const DashboardPage: React.FC = () => {
   const [businessName, setBusinessName] = useState<string>('');
   const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
+  const [showPendingByUserModal, setShowPendingByUserModal] = useState(false);
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'date' | 'invoiceNumber' | 'customer' | 'amount' | 'balance'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const previewRef = React.useRef<HTMLDivElement>(null);
+
+  const PAGE_SIZE = 10;
+
+  const handleSort = (column: typeof sortBy) => {
+    if (sortBy === column) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortOrder(column === 'date' || column === 'amount' || column === 'balance' ? 'desc' : 'asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ column }: { column: typeof sortBy }) => {
+    if (sortBy !== column) return <ArrowUpDown className="h-3.5 w-3.5 ml-1 opacity-50" />;
+    return sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5 ml-1" /> : <ArrowDown className="h-3.5 w-3.5 ml-1" />;
+  };
 
   useEffect(() => {
     loadDashboardStats();
@@ -103,57 +130,75 @@ export const DashboardPage: React.FC = () => {
   const loadDashboardStats = async () => {
     try {
       // Use Promise.allSettled to handle partial failures gracefully
-      const [customersResult, invoicesResult] = await Promise.allSettled([
+      const [profileResult, customersResult, invoicesResult] = await Promise.allSettled([
+        api.user.getProfile(),
         api.customers.getList(),
         api.invoices.getList(),
       ]);
 
-      // Handle customers response
+      // Extract data - handle both direct array and wrapped { data: [...] } responses
+      const unwrapData = (res: any): any[] => {
+        const d = res?.data;
+        return Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : []);
+      };
+
+      let customersData: Customer[] = [];
+      let invoicesData: Invoice[] = [];
+
       if (customersResult.status === 'rejected') {
-        const error = customersResult.reason;
+        const err = customersResult.reason;
         if (process.env.NODE_ENV === 'development') {
-          console.error('❌ Failed to load customers:', error);
+          console.error('❌ Failed to load customers:', err?.response?.status, err?.message, err);
         }
-        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-          throw new Error('Request timed out. Please check your connection and try again.');
-        }
-        throw new Error('Failed to load customers. Please try again.');
+        // Continue with empty customers - don't block dashboard
+      } else {
+        customersData = unwrapData(customersResult.value) as Customer[];
       }
 
-      // Handle invoices response
       if (invoicesResult.status === 'rejected') {
-        const error = invoicesResult.reason;
+        const err = invoicesResult.reason;
         if (process.env.NODE_ENV === 'development') {
-          console.error('❌ Failed to load invoices:', error);
+          console.error('❌ Failed to load invoices:', err?.response?.status, err?.message, err);
         }
-        if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-          throw new Error('Request timed out. Please check your connection and try again.');
+        // If both fail, show error
+        if (customersResult.status === 'rejected') {
+          const msg = err?.response?.status === 401
+            ? 'Session expired. Please log in again.'
+            : err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')
+              ? 'Request timed out. Check your connection.'
+              : 'Failed to load dashboard. Ensure the API is running and try again.';
+          throw new Error(msg);
         }
-        throw new Error('Failed to load invoices. Please try again.');
+      } else {
+        invoicesData = unwrapData(invoicesResult.value) as Invoice[];
       }
 
-      const customersResponse = customersResult.value;
-      const invoicesResponse = invoicesResult.value;
-
-      const customersData = customersResponse.data;
-      const invoicesData = invoicesResponse.data;
+      // Remove duplicate invoices by id (keep first occurrence)
+      const uniqueInvoices = Array.from(new Map(invoicesData.map(inv => [inv.id, inv])).values());
 
       setCustomers(customersData);
-      setAllInvoices(invoicesData);
+      setAllInvoices(uniqueInvoices);
 
       // Calculate total pending amount from ALL invoices' balanceAmount
-      const totalPendingAmount = invoicesData.reduce((sum, invoice) => sum + invoice.balanceAmount, 0);
+      const totalPendingAmount = uniqueInvoices.reduce((sum, invoice) => sum + (invoice.balanceAmount ?? 0), 0);
+
+      // Admin only: calculate admin's own pending amount (invoices created by admin)
+      let adminOwnPendingAmount: number | undefined;
+      if (profileResult.status === 'fulfilled' && profileResult.value?.data?.role === 'Admin') {
+        const currentUserId = profileResult.value?.data?.id;
+        adminOwnPendingAmount = uniqueInvoices
+          .filter((inv) => String(inv.userId) === String(currentUserId))
+          .reduce((sum, inv) => sum + (inv.balanceAmount ?? 0), 0);
+      }
 
       // Calculate customer counts based on their invoice balances
       const customerBalanceMap = new Map<number, number>();
 
-      // Sum up balance amounts for each customer
-      invoicesData.forEach(invoice => {
+      uniqueInvoices.forEach(invoice => {
         const currentBalance = customerBalanceMap.get(invoice.customerId) || 0;
-        customerBalanceMap.set(invoice.customerId, currentBalance + invoice.balanceAmount);
+        customerBalanceMap.set(invoice.customerId, currentBalance + (invoice.balanceAmount ?? 0));
       });
 
-      // Count paid and unpaid customers
       let paidCustomersCount = 0;
       let unpaidCustomersCount = 0;
 
@@ -168,10 +213,11 @@ export const DashboardPage: React.FC = () => {
 
       setStats({
         totalPendingAmount,
+        adminOwnPendingAmount,
         totalCustomers: customersData.length,
         paidCustomersCount,
         unpaidCustomersCount,
-        recentInvoices: invoicesData.slice(0, 5), // Show 5 most recent invoices
+        recentInvoices: uniqueInvoices.slice(0, 5),
       });
     } catch (error: any) {
       if (process.env.NODE_ENV === 'development') {
@@ -194,6 +240,10 @@ export const DashboardPage: React.FC = () => {
     navigate('/customers/unpaid');
   };
 
+  const handleViewAllCustomers = () => {
+    navigate('/customers');
+  };
+
   const handleViewPending = () => {
     setShowPendingInvoices(true);
     setShowAllInvoices(true); // Show all invoices view
@@ -207,6 +257,30 @@ export const DashboardPage: React.FC = () => {
       }
     }, 100);
   };
+
+  const handleViewPendingByUser = () => {
+    setShowPendingByUserModal(true);
+  };
+
+  // Group pending amount by user (for the popup)
+  const pendingByUser = React.useMemo(() => {
+    const map = new Map<string, { userName: string; amount: number }>();
+    allInvoices.forEach((inv) => {
+      const uid = inv.userId ?? 'unknown';
+      const name = inv.userName ?? 'Unknown';
+      const balance = inv.balanceAmount ?? 0;
+      const existing = map.get(uid);
+      if (existing) {
+        existing.amount += balance;
+      } else {
+        map.set(uid, { userName: name, amount: balance });
+      }
+    });
+    return Array.from(map.entries())
+      .map(([userId, { userName, amount }]) => ({ userId, userName, amount }))
+      .filter((r) => r.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+  }, [allInvoices]);
 
   // Filter invoices for current month
   const getCurrentMonthInvoices = () => {
@@ -243,7 +317,9 @@ export const DashboardPage: React.FC = () => {
 
   // Apply filters
   const getFilteredInvoices = () => {
-    let filtered = showAllInvoices ? allInvoices : getCurrentMonthInvoices();
+    // When a specific customer is selected, show all their invoices (not just current month)
+    const useAllInvoices = showAllInvoices || selectedCustomerFilter !== 'all';
+    let filtered = useAllInvoices ? allInvoices : getCurrentMonthInvoices();
 
     // Filter pending invoices (balanceAmount > 0) when showPendingInvoices is true
     if (showPendingInvoices) {
@@ -264,6 +340,38 @@ export const DashboardPage: React.FC = () => {
   };
 
   const filteredInvoices = getFilteredInvoices();
+
+  // Sort
+  const sortedInvoices = React.useMemo(() => {
+    const arr = [...filteredInvoices];
+    const mult = sortOrder === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      switch (sortBy) {
+        case 'date':
+          return mult * (new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime());
+        case 'invoiceNumber':
+          return mult * String(a.invoiceNumber).localeCompare(String(b.invoiceNumber));
+        case 'customer':
+          return mult * String(a.customerName || '').localeCompare(String(b.customerName || ''));
+        case 'amount':
+          return mult * ((a.grandTotal ?? 0) - (b.grandTotal ?? 0));
+        case 'balance':
+          return mult * ((a.balanceAmount ?? 0) - (b.balanceAmount ?? 0));
+        default:
+          return 0;
+      }
+    });
+    return arr;
+  }, [filteredInvoices, sortBy, sortOrder]);
+
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(sortedInvoices.length / PAGE_SIZE));
+  const paginatedInvoices = sortedInvoices.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCustomerFilter, selectedStatusFilter, showAllInvoices, showPendingInvoices]);
 
   // Get available years from invoices
   const getAvailableYears = (): number[] => {
@@ -492,7 +600,7 @@ export const DashboardPage: React.FC = () => {
       await loadDashboardStats();
     } catch (error: any) {
       console.error('Failed to duplicate invoice:', error);
-      alert(`Failed to duplicate invoice: ${error.response?.data?.message || 'Please try again.'}`);
+      alert(`Failed to duplicate invoice: ${getApiErrorMessage(error, 'Please try again.')}`);
     }
   };
 
@@ -509,7 +617,40 @@ export const DashboardPage: React.FC = () => {
       await loadDashboardStats();
     } catch (error: any) {
       console.error('Failed to delete invoice:', error);
-      alert(`Failed to delete invoice: ${error.response?.data?.message || 'Please try again.'}`);
+      alert(`Failed to delete invoice: ${getApiErrorMessage(error, 'Please try again.')}`);
+    }
+  };
+
+  // Add payment to invoice
+  const handleAddPaymentClick = (invoice: Invoice) => {
+    setSelectedInvoiceForPayment(invoice);
+    setShowPaymentModal(true);
+  };
+
+  const handleConfirmPayment = async (paymentData: {
+    amountPaid: number;
+    paymentMode: string;
+    wave: number;
+    remarks: string;
+  }) => {
+    if (!selectedInvoiceForPayment) return;
+
+    try {
+      await api.invoices.addPayment(selectedInvoiceForPayment.id, {
+        amountPaid: paymentData.amountPaid,
+        waveAmount: paymentData.wave,
+        paymentMode: paymentData.paymentMode,
+        remarks: paymentData.remarks || 'Added from dashboard',
+      });
+
+      alert('Payment added successfully!');
+      await loadDashboardStats();
+      setShowPaymentModal(false);
+      setSelectedInvoiceForPayment(null);
+    } catch (err: any) {
+      console.error('Failed to add payment:', err);
+      alert(`Error adding payment: ${getApiErrorMessage(err, 'Please try again.')}`);
+      throw err;
     }
   };
 
@@ -750,10 +891,71 @@ export const DashboardPage: React.FC = () => {
 
         <DashboardStats
           stats={stats}
+          userRole={userRole}
           onViewPaid={handleViewPaid}
           onViewUnpaid={handleViewUnpaid}
           onViewPending={handleViewPending}
+          onViewPendingByUser={handleViewPendingByUser}
+          onViewAllCustomers={handleViewAllCustomers}
         />
+
+        {/* Pending Amount by User Modal */}
+        {showPendingByUserModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h2 className="text-lg font-semibold text-gray-900">Pending Amount by User</h2>
+                <button
+                  onClick={() => setShowPendingByUserModal(false)}
+                  className="text-gray-400 hover:text-gray-600 p-1"
+                  title="Close"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-4 max-h-80 overflow-y-auto">
+                {pendingByUser.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">No pending amounts.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left">
+                        <th className="py-2 font-medium text-gray-700">User</th>
+                        <th className="py-2 font-medium text-gray-700 text-right">Pending Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingByUser.map((row) => (
+                        <tr key={row.userId} className="border-b last:border-0">
+                          <td className="py-2 text-gray-900">{row.userName}</td>
+                          <td className="py-2 text-right font-medium text-red-600">
+                            {formatCurrency(row.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="p-4 border-t bg-gray-50 rounded-b-lg">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium text-gray-700">Total</span>
+                  <span className="font-bold text-gray-900">{formatCurrency(stats.totalPendingAmount)}</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowPendingByUserModal(false);
+                    handleViewPending();
+                  }}
+                  className={`mt-3 w-full py-2 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover} text-sm font-medium`}
+                >
+                  View Pending Invoices
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Year-based Excel Export Section */}
         <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mt-4 sm:mt-6 md:mt-8">
@@ -801,8 +1003,10 @@ export const DashboardPage: React.FC = () => {
                 <h2 className="text-xl font-bold">
                   {showPendingInvoices
                     ? 'Pending Invoices'
-                    : showAllInvoices
-                      ? 'All Invoices'
+                    : showAllInvoices || selectedCustomerFilter !== 'all'
+                      ? selectedCustomerFilter !== 'all'
+                        ? `Invoices for ${customers.find(c => c.id === selectedCustomerFilter)?.customerName || 'Customer'}`
+                        : 'All Invoices'
                       : 'Current Month Invoices'}
                 </h2>
                 <div className="flex flex-wrap gap-2">
@@ -879,16 +1083,23 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           {filteredInvoices.length > 0 ? (
+            <>
             <div className="overflow-x-auto -mx-4 sm:mx-0">
               <div className="inline-block min-w-full align-middle">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Invoice #
+                      <button onClick={() => handleSort('invoiceNumber')} className="flex items-center hover:text-gray-700 focus:outline-none">
+                        Invoice #
+                        <SortIcon column="invoiceNumber" />
+                      </button>
                     </th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                      Customer
+                      <button onClick={() => handleSort('customer')} className="flex items-center hover:text-gray-700 focus:outline-none">
+                        Customer
+                        <SortIcon column="customer" />
+                      </button>
                     </th>
                     {(userRole === 'MasterUser' || userRole === 'Admin') && (
                       <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
@@ -896,13 +1107,22 @@ export const DashboardPage: React.FC = () => {
                       </th>
                     )}
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                      Date
+                      <button onClick={() => handleSort('date')} className="flex items-center hover:text-gray-700 focus:outline-none">
+                        Date
+                        <SortIcon column="date" />
+                      </button>
                     </th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Amount
+                      <button onClick={() => handleSort('amount')} className="flex items-center hover:text-gray-700 focus:outline-none">
+                        Amount
+                        <SortIcon column="amount" />
+                      </button>
                     </th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                      Balance
+                      <button onClick={() => handleSort('balance')} className="flex items-center hover:text-gray-700 focus:outline-none">
+                        Balance
+                        <SortIcon column="balance" />
+                      </button>
                     </th>
                     <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
@@ -913,7 +1133,7 @@ export const DashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredInvoices.map((invoice) => (
+                  {paginatedInvoices.map((invoice) => (
                     <tr key={invoice.id} className="hover:bg-gray-50">
                       <td
                         className="px-3 sm:px-6 py-4 text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
@@ -933,7 +1153,7 @@ export const DashboardPage: React.FC = () => {
                         </td>
                       )}
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
-                        {new Date(invoice.invoiceDate).toLocaleDateString()}
+                        {formatDate(invoice.invoiceDate)}
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                         ₹{invoice.grandTotal.toLocaleString()}
@@ -958,6 +1178,18 @@ export const DashboardPage: React.FC = () => {
                       </td>
                       <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-1 sm:gap-2">
+                          {invoice.balanceAmount > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddPaymentClick(invoice);
+                              }}
+                              className="text-emerald-600 hover:text-emerald-900 p-1 rounded hover:bg-emerald-50"
+                              title="Add Payment"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -996,6 +1228,33 @@ export const DashboardPage: React.FC = () => {
               </table>
               </div>
             </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-3 sm:px-6 py-3 border-t border-gray-200 bg-gray-50">
+                <p className="text-sm text-gray-700">
+                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedInvoices.length)} of {sortedInvoices.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           ) : (
             <p className="text-gray-500 text-center py-4">No invoices found</p>
           )}
@@ -1063,35 +1322,38 @@ export const DashboardPage: React.FC = () => {
                     <TaxInvoice
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
                     <InvoicePreview
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   ) : (
                     <DynamicInvoiceRenderer
                       layout={resolvedLayoutConfig}
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   )}
                 </div>
@@ -1099,6 +1361,20 @@ export const DashboardPage: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Add Payment Modal */}
+      {showPaymentModal && selectedInvoiceForPayment && (
+        <AddPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedInvoiceForPayment(null);
+          }}
+          onConfirm={handleConfirmPayment}
+          invoiceNumber={selectedInvoiceForPayment.invoiceNumber}
+          balanceAmount={selectedInvoiceForPayment.balanceAmount}
+        />
       )}
     </div>
   );

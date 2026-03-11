@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { Plus, Trash2, UserPlus, IndianRupee, FolderOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto } from '../types';
+import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto, Product } from '../types';
 import { InvoiceFormTaxableDetails } from './InvoiceFormTaxableDetails.tsx';
-import { calculateGST } from '../utils/helpers';
+import { calculateGST, getFinancialYearString, parseLocalDate } from '../utils/helpers';
 import { AddCustomerModal } from './AddCustomerModal';
+import { ProductAutocomplete } from './ProductAutocomplete';
 import { InvoiceTemplateModal } from './InvoiceTemplateModal';
 import { ToWords } from 'to-words';
 
@@ -17,14 +18,20 @@ interface InvoiceFormProps {
   handleSelectedCustomer: (id: number) => void;
   items: Partial<InvoiceItem>[];
   setItems: React.Dispatch<React.SetStateAction<Partial<InvoiceItem>[]>>;
-  dueDate: string;
-  setDueDate: React.Dispatch<React.SetStateAction<string>>;
+  invoicePrefix: string;
+  invoiceNumberNumeric: number;
+  setInvoiceNumberNumeric: React.Dispatch<React.SetStateAction<number>>;
+  invoiceNumberError?: string;
+  invoiceDate: string;
+  setInvoiceDate: React.Dispatch<React.SetStateAction<string>>;
   paymentStatus: PaymentStatus;
   setPaymentStatus: React.Dispatch<React.SetStateAction<PaymentStatus>>;
   initialPayment: number;
   setInitialPayment: React.Dispatch<React.SetStateAction<number>>;
   isEditMode?: boolean;
   initialCustomerId?: number;
+  /** For Admin: create invoice on behalf of this user */
+  onBehalfOfUserId?: string;
 }
 
 export const InvoiceForm: React.FC<InvoiceFormProps> = ({
@@ -34,14 +41,19 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   handleSelectedCustomer,
   items,
   setItems,
-  dueDate,
-  setDueDate,
+  invoicePrefix,
+  invoiceNumberNumeric,
+  setInvoiceNumberNumeric,
+  invoiceNumberError,
+  invoiceDate,
+  setInvoiceDate,
   paymentStatus,
   setPaymentStatus,
   initialPayment,
   setInitialPayment,
   isEditMode = false,
   initialCustomerId,
+  onBehalfOfUserId,
 }) => {
   const [selectedCustomer, setSelectedCustomer] = useState<number>(initialCustomerId || 0);
   const { profile } = useAuth();
@@ -127,6 +139,28 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
     setItems(updatedItems);
   };
 
+  const handleProductChange = (index: number, productName: string, product?: Product) => {
+    if (product) {
+      const updatedItems = [...items];
+      const current = updatedItems[index];
+      updatedItems[index] = {
+        ...current,
+        productName: product.name,
+        rate: product.defaultRate ?? current.rate ?? 0,
+        gstPercentage: defaultGstPercentage, // Always use profile's GST when selecting product
+      };
+      const quantity = disableQuantity ? 1 : (Number(updatedItems[index].quantity) || 1);
+      const rate = Number(updatedItems[index].rate) || 0;
+      const gstPercentage = updatedItems[index].gstPercentage ?? 0;
+      const amount = quantity * rate;
+      const { gstAmount, cgst, sgst } = calculateGST(amount, gstPercentage);
+      updatedItems[index] = { ...updatedItems[index], amount, gstAmount, cgst, sgst };
+      setItems(updatedItems);
+    } else {
+      updateItem(index, 'productName', productName);
+    }
+  };
+
   const calculateTotals = () => {
     const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
     const totalGST = items.reduce((sum, item) => sum + (item.gstAmount || 0), 0);
@@ -181,7 +215,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       // For edit mode, create UpdateInvoiceDto
       const invoiceData = {
         customerId: selectedCustomer,
-        dueDate: dueDate || undefined,
+        dueDate: undefined,
         items: items.map(item => ({
           productName: item.productName!,
           quantity: item.quantity!,
@@ -214,9 +248,11 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       }
     }
 
+    const fullInvoiceNumber = `${invoicePrefix}${invoiceNumberNumeric} / ${getFinancialYearString(invoiceDate ? parseLocalDate(invoiceDate) : new Date())}`;
     const invoiceData: CreateInvoiceDto = {
       customerId: selectedCustomer,
-      dueDate: dueDate || undefined,
+      invoiceNumber: fullInvoiceNumber,
+      invoiceDate: invoiceDate || new Date().toISOString().split('T')[0],
       invoicePrefix: '', // Will be set from user profile on backend
       items: items.map(item => ({
         productName: item.productName!,
@@ -226,6 +262,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       })),
       status: finalStatus,
       initialPayment: finalInitialPayment,
+      ...(onBehalfOfUserId && { onBehalfOfUserId }),
     };
 
     onInvoiceCreate(invoiceData);
@@ -301,16 +338,53 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             })()}
           </div>
 
-          {/* Due Date */}
+          {/* Invoice Number - only numeric part editable; prefix & FY from profile/date */}
+          {!isEditMode && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Invoice Number *
+              </label>
+              <div className="flex items-center gap-1 flex-wrap">
+                <span className="px-2 py-1.5 text-sm bg-gray-100 border border-gray-300 rounded-md text-gray-700" aria-hidden="true">
+                  {invoicePrefix}
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  value={invoiceNumberNumeric}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1) setInvoiceNumberNumeric(v);
+                    else if (e.target.value === '') setInvoiceNumberNumeric(1);
+                  }}
+                  onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (isNaN(v) || v < 1) setInvoiceNumberNumeric(1);
+                  }}
+                  aria-label="Invoice number (numeric part)"
+                  className={`w-24 px-2 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${invoiceNumberError ? 'border-red-500' : 'border-gray-300'}`}
+                  required
+                />
+                <span className="px-2 py-1.5 text-sm bg-gray-100 border border-gray-300 rounded-md text-gray-700" aria-hidden="true">
+                  / {getFinancialYearString(invoiceDate ? parseLocalDate(invoiceDate) : new Date())}
+                </span>
+              </div>
+              {invoiceNumberError && (
+                <p className="mt-1 text-xs text-red-600">{invoiceNumberError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Invoice Date - manual, default today, allows backdate */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Due Date
+              Invoice Date
             </label>
             <input
               type="date"
-              value={dueDate}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDueDate(e.target.value)}
-              aria-label="Due date"
+              value={invoiceDate}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceDate(e.target.value)}
+              aria-label="Invoice date"
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -454,13 +528,12 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Product Name *
                       </label>
-                      <input
-                        type="text"
+                      <ProductAutocomplete
                         value={item.productName || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'productName', e.target.value)}
+                        onChange={(name, product) => handleProductChange(index, name, product)}
                         disabled={selectedCustomer === 0}
-                        aria-label={`Product name ${index + 1}`}
-                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        focusRing={focusRing}
+                        ariaLabel={`Product name ${index + 1}`}
                         required
                       />
                     </div>
@@ -579,6 +652,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         isOpen={showAddCustomer}
         onClose={() => setShowAddCustomer(false)}
         onCustomerAdded={handleCustomerAdded}
+        existingCustomerNames={customers.map((c) => c.customerName)}
       />
 
       {/* Invoice Template Modal */}

@@ -9,9 +9,10 @@ interface StaticInvoiceHeaderProps {
   customer: Customer | null;
   invoiceNumber: string;
   invoiceDate: string;
+  formattedInvoiceDate?: string;
 }
 
-function StaticInvoiceHeader({ company, customer, invoiceNumber, invoiceDate }: StaticInvoiceHeaderProps) {
+function StaticInvoiceHeader({ company, customer, invoiceNumber, invoiceDate, formattedInvoiceDate }: StaticInvoiceHeaderProps) {
   return (
     <>
       <header className="invoice-header w-full flex justify-between items-stretch">
@@ -28,7 +29,7 @@ function StaticInvoiceHeader({ company, customer, invoiceNumber, invoiceDate }: 
           <SInvoiceBillTo customer={customer} />
         </div>
         <div className="right-side w-[40%]">
-          <SInvoiceDetails invoiceNumber={invoiceNumber} invoiceDate={invoiceDate} />
+          <SInvoiceDetails invoiceNumber={invoiceNumber} invoiceDate={invoiceDate} formattedInvoiceDate={formattedInvoiceDate} />
         </div>
       </div>
     </>

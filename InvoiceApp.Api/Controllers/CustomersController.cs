@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using InvoiceApp.Application.DTOs;
 using InvoiceApp.Application.Interfaces;
 using InvoiceApp.Domain.Entities;
@@ -16,20 +16,39 @@ namespace InvoiceApp.Api.Controllers
     {
         private readonly ICustomerRepository _customerService;
         private readonly IUserContext _userContext;
+        private readonly IUserManagementService _userManagementService;
 
-        public CustomersController(ICustomerRepository customerService, IUserContext userContext)
+        public CustomersController(ICustomerRepository customerService, IUserContext userContext, IUserManagementService userManagementService)
         {
             _customerService = customerService;
             _userContext = userContext;
+            _userManagementService = userManagementService;
         }
 
         [HttpGet]
-        public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers()
+        public async Task<ActionResult<List<CustomerProfileDto>>> GetCustomers([FromQuery] Guid? userId = null)
         {
-            var userId = _userContext.GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var currentUserId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (currentUserId == null) return Unauthorized();
 
-            var customers = await _customerService.GetCustomersByUserIdAsync(userId.Value);
+            List<CustomerProfileDto> customers;
+            if (userRole == "Admin" && userId.HasValue)
+            {
+                var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(currentUserId.Value);
+                if (!createdUserIds.Contains(userId.Value) && userId.Value != currentUserId.Value)
+                    return Forbid("You can only view customers of users you created or yourself.");
+                customers = await _customerService.GetCustomersByUserIdAsync(userId.Value);
+            }
+            else if (userRole == "Admin")
+            {
+                customers = await _customerService.GetCustomersForAdminAsync(currentUserId.Value);
+            }
+            else
+            {
+                customers = await _customerService.GetCustomersByUserIdAsync(currentUserId.Value);
+            }
+
             return Ok(customers);
         }
 
@@ -61,20 +80,74 @@ namespace InvoiceApp.Api.Controllers
                 return Forbid("MasterUser cannot create customers. Only Admin and User roles can create customers.");
             }
 
-            var customer = await _customerService.CreateCustomerAsync(userId.Value, createDto);
-            return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);
+            // Only Admin can share with users; validate SharedWithUserIds are users they created
+            if (createDto.SharedWithUserIds != null && createDto.SharedWithUserIds.Count > 0)
+            {
+                if (userRole != "Admin")
+                    return BadRequest(new { message = "Only Admin can share customers with other users." });
+                var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(userId.Value);
+                var invalid = createDto.SharedWithUserIds.Where(uid => !createdUserIds.Contains(uid) && uid != userId.Value).ToList();
+                if (invalid.Count > 0)
+                    return BadRequest(new { message = "You can only share with users you created." });
+            }
+
+            try
+            {
+                var customer = await _customerService.CreateCustomerAsync(userId.Value, createDto);
+                return CreatedAtAction(nameof(GetCustomer), new { id = customer.Id }, customer);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("{id}/share")]
+        public async Task<IActionResult> ShareCustomer(int id, [FromBody] ShareCustomerDto dto)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || userRole != "Admin")
+                return Forbid("Only Admin can share customers with other users.");
+
+            var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(userId.Value);
+            var invalid = (dto?.UserIds ?? new List<Guid>()).Where(uid => !createdUserIds.Contains(uid) && uid != userId.Value).ToList();
+            if (invalid.Count > 0)
+                return BadRequest(new { message = "You can only share with users you created." });
+
+            try
+            {
+                await _customerService.ShareCustomerWithUsersAsync(id, userId.Value, dto?.UserIds ?? new List<Guid>());
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
         }
 
         [HttpPut("{id}")]
         public async Task<ActionResult<CustomerProfileDto>> UpdateCustomer(int id, UpdateCustomerDto updateDto)
         {
             var userId = _userContext.GetCurrentUserId();
-            if (userId == null) return Unauthorized();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole)) return Unauthorized();
 
-            var customer = await _customerService.UpdateCustomerAsync(id, userId.Value, updateDto);
-            if (customer == null) return NotFound();
+            try
+            {
+                var customer = await _customerService.UpdateCustomerAsync(id, userId.Value, userRole, updateDto);
+                if (customer == null) return NotFound(new { message = "Customer not found or you do not have permission to update it." });
 
-            return Ok(customer);
+                return Ok(customer);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpDelete("{id}")]
@@ -86,13 +159,13 @@ namespace InvoiceApp.Api.Controllers
             try
             {
                 var result = await _customerService.DeleteCustomerAsync(id, userId.Value);
-                if (!result) return NotFound();
+                if (!result) return NotFound(new { message = "Customer not found or you do not have permission to delete it." });
 
                 return NoContent();
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new { message = ex.Message });
             }
         }
 

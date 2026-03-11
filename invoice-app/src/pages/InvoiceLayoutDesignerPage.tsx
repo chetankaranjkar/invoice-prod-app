@@ -487,7 +487,7 @@ export const InvoiceLayoutDesignerPage: React.FC = () => {
               layout={layoutConfig}
               customer={SAMPLE_CUSTOMER}
               items={SAMPLE_ITEMS}
-              dueDate={new Date().toISOString().split('T')[0]}
+              invoiceDate={new Date().toISOString().split('T')[0]}
               invoiceNumber="INV1001"
               paymentStatus="Unpaid"
               initialPayment={0}

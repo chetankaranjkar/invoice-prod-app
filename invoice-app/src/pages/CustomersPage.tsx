@@ -4,7 +4,8 @@ import { Users, IndianRupee, Phone, Mail, UserPlus, X, Edit, Eye, Upload, Downlo
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/agent';
 import type { Customer, Invoice, CreateCustomerDto, InvoiceLayoutConfigDto } from '../types';
-import { formatCurrency } from '../utils/helpers';
+import { formatCurrency, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
+import { useDateFormat } from '../hooks/useDateFormat';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
 import { AddCustomerModal } from '../components/AddCustomerModal';
@@ -24,6 +25,7 @@ interface CustomersPageProps {
 export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) => {
   const { customerId: customerIdParam } = useParams<{ customerId?: string }>();
   const { themeColors } = useTheme();
+  const formatDate = useDateFormat();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,7 +76,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       setCustomers(customersResponse.data);
       setInvoices(invoicesResponse.data);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load data');
+      setError(getApiErrorMessage(err, 'Failed to load data'));
     } finally {
       setLoading(false);
     }
@@ -326,7 +328,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       if (process.env.NODE_ENV === 'development') {
         console.error('❌ Failed to add payment:', err);
       }
-      alert(`Error adding payment: ${err.response?.data?.message || 'Please try again.'}`);
+      alert(`Error adding payment: ${getApiErrorMessage(err, 'Please try again.')}`);
       throw err; // Re-throw to let modal handle it
     }
   };
@@ -721,9 +723,21 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                       <div className={`p-2 ${themeColors.secondary} rounded-full mr-3`}>
                         <Users className={`h-5 w-5 ${themeColors.accent}`} />
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {customer.customerName}
-                      </h3>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {customer.customerName}
+                        </h3>
+                        {(userRole === 'Admin' && (customer.userName || customer.userEmail)) && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Owner: {customer.userName || customer.userEmail}
+                          </p>
+                        )}
+                        {customer.isSharedWithMe && (
+                          <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded">
+                            Shared with me
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       <button
@@ -815,6 +829,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         isOpen={showAddCustomer}
         onClose={() => setShowAddCustomer(false)}
         onCustomerAdded={handleCustomerAdded}
+        existingCustomerNames={customers.map((c) => c.customerName)}
       />
 
       {/* ✅ Edit Customer Modal */}
@@ -826,6 +841,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         }}
         customer={editingCustomer}
         onCustomerUpdated={handleCustomerUpdated}
+        existingCustomerNames={editingCustomer ? customers.filter((c) => c.id !== editingCustomer.id).map((c) => c.customerName) : []}
       />
 
       {/* 🧾 Customer Invoice + Payment Modal */}
@@ -871,7 +887,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                           {inv.invoiceNumber}
                         </td>
                         <td className="px-4 py-2 text-left text-gray-600 whitespace-nowrap min-w-[7rem]">
-                          {inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '–'}
+                          {inv.invoiceDate ? formatDate(inv.invoiceDate) : '–'}
                         </td>
                         <td className="px-4 py-2 text-right">
                           ₹{inv.grandTotal.toLocaleString()}
@@ -995,35 +1011,38 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                     <TaxInvoice
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
                     <InvoicePreview
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   ) : (
                     <DynamicInvoiceRenderer
                       layout={resolvedLayoutConfig}
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
-                      dueDate={selectedInvoice.dueDate || ''}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
                       invoiceNumber={selectedInvoice.invoiceNumber}
                       paymentStatus={selectedInvoice.status}
                       initialPayment={selectedInvoice.paidAmount}
                       waveAmount={selectedInvoice.waveAmount || 0}
                       payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
                     />
                   )}
                 </div>

@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useDateFormat } from '../hooks/useDateFormat';
 import { Plus, Edit, Trash2, Users as UsersIcon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/agent';
+import { getApiErrorMessage } from '../utils/helpers';
 import { UserInvoicesModal } from '../components/UserInvoicesModal';
 import type { UserListDto, CreateUserDto } from '../types';
 
 export const UserManagementPage: React.FC = () => {
   const { themeColors } = useTheme();
+  const formatDate = useDateFormat();
   const [users, setUsers] = useState<UserListDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,7 +57,7 @@ export const UserManagementPage: React.FC = () => {
       setUsers(response.data);
       setError('');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to load users');
+      setError(getApiErrorMessage(err, 'Failed to load users'));
       console.error('Error loading users:', err);
     } finally {
       setLoading(false);
@@ -90,7 +93,7 @@ export const UserManagementPage: React.FC = () => {
       loadUsers();
     } catch (err: any) {
       // Backend error message will override frontend check if it's more specific
-      setError(err.response?.data?.message || err.response?.data || 'Failed to save user');
+      setError(getApiErrorMessage(err, 'Failed to save user'));
     }
   };
 
@@ -103,7 +106,7 @@ export const UserManagementPage: React.FC = () => {
       await api.userManagement.deleteUser(userId);
       loadUsers();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to delete user');
+      setError(getApiErrorMessage(err, 'Failed to delete user'));
     }
   };
 
@@ -258,7 +261,7 @@ export const UserManagementPage: React.FC = () => {
                       {user.businessName || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {formatDate(user.createdAt)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button

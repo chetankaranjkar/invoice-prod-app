@@ -25,8 +25,12 @@ namespace InvoiceApp.Domain.Entities
         public string? AddressSectionBgColor { get; set; }
         public string? HeaderLogoTextColor { get; set; }
         public string? AddressSectionTextColor { get; set; }
+        public int? InvoiceHeaderFontSize { get; set; } // px: 8, 10, 12, 14, 16. Null = use default.
+        public int? AddressSectionFontSize { get; set; } // px: 8, 10, 12, 14, 16. Null = use default.
+        public bool UseDefaultInvoiceFontSizes { get; set; } = true; // When true, use current hardcoded sizes.
         public string? GpayNumber { get; set; }
         public string? TaxPractitionerTitle { get; set; } // e.g. "TAX GST PRACTITIONER" - line below company name
+        public string? DateFormat { get; set; } = "DD/MM/YYYY"; // e.g. DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD
         public string? InvoicePrefix { get; set; } = "INV"; // Default invoice prefix
         public decimal DefaultGstPercentage { get; set; } = 18; // Default GST percentage
         public bool DisableQuantity { get; set; } = false; // Disable quantity field in invoices

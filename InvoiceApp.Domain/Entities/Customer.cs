@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace InvoiceApp.Domain.Entities
@@ -21,6 +21,7 @@ namespace InvoiceApp.Domain.Entities
         public decimal TotalBalance { get; set; } = 0m;
 
         public User? User { get; set; }
+        public ICollection<CustomerUser> SharedWithUsers { get; set; } = new List<CustomerUser>();
         public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
     }
 }

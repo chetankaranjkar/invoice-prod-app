@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AutoMapper;
 using InvoiceApp.Domain.Entities;
@@ -14,17 +15,23 @@ namespace InvoiceApp.Application.Services
         private readonly IInvoiceRepository _invoiceRepository;
         private readonly ICustomerRepository _customerRepository;
         private readonly IUserService _userService;
+        private readonly IUserManagementService _userManagementService;
+        private readonly IProductService _productService;
         private readonly IMapper _mapper;
 
         public InvoiceService(
             IInvoiceRepository invoiceRepository,
             ICustomerRepository customerRepository,
             IUserService userService,
+            IUserManagementService userManagementService,
+            IProductService productService,
             IMapper mapper)
         {
             _invoiceRepository = invoiceRepository;
             _customerRepository = customerRepository;
             _userService = userService;
+            _userManagementService = userManagementService;
+            _productService = productService;
             _mapper = mapper;
         }
 
@@ -39,19 +46,50 @@ namespace InvoiceApp.Application.Services
                 throw new UnauthorizedAccessException("MasterUser cannot create invoices. Only Admin and User roles can create invoices.");
             }
 
-            // Validate customer belongs to user
-            var customer = await _customerRepository.GetCustomerByIdAsync(createInvoiceDto.CustomerId,userId);
-            if (customer == null || customer.UserId != userId)
+            Guid effectiveUserId = userId;
+            if (userRole == "Admin" && createInvoiceDto.OnBehalfOfUserId.HasValue)
+            {
+                var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(userId);
+                if (!createdUserIds.Contains(createInvoiceDto.OnBehalfOfUserId.Value) && createInvoiceDto.OnBehalfOfUserId.Value != userId)
+                    throw new UnauthorizedAccessException("You can only create invoices on behalf of users you created or yourself.");
+                effectiveUserId = createInvoiceDto.OnBehalfOfUserId.Value;
+            }
+
+            // Validate customer is accessible to effective user (owned or shared)
+            var customer = await _customerRepository.GetCustomerByIdAsync(createInvoiceDto.CustomerId, effectiveUserId);
+            if (customer == null)
                 throw new ArgumentException("Customer not found");
 
-            // Get user's invoice prefix from user profile (DTO prefix is ignored, using user's stored prefix)
-            var userProfile = await _userService.GetUserProfileAsync(userId);
+            // Invoice date: parse early (needed for FY when auto-generating invoice number)
+            DateTime invoiceDate;
+            if (!string.IsNullOrWhiteSpace(createInvoiceDto.InvoiceDate) && DateTime.TryParse(createInvoiceDto.InvoiceDate, out var parsedDate))
+            {
+                invoiceDate = parsedDate.Date;
+            }
+            else
+            {
+                invoiceDate = DateTime.UtcNow.Date;
+            }
+
+            // Get effective user's invoice prefix and profile (invoice uses their company info)
+            var userProfile = await _userService.GetUserProfileAsync(effectiveUserId);
             var invoicePrefix = !string.IsNullOrEmpty(userProfile?.InvoicePrefix) 
                 ? userProfile.InvoicePrefix 
                 : "INV"; // Default fallback
 
-            // Generate invoice number using user's prefix
-            var invoiceNumber = await _invoiceRepository.GenerateInvoiceNumberAsync(userId, invoicePrefix);
+            // Invoice number: use provided one if valid, otherwise auto-generate (FY based on invoice date)
+            string invoiceNumber;
+            if (!string.IsNullOrWhiteSpace(createInvoiceDto.InvoiceNumber))
+            {
+                var providedNumber = createInvoiceDto.InvoiceNumber.Trim();
+                if (await _invoiceRepository.InvoiceNumberExistsAsync(effectiveUserId, providedNumber))
+                    throw new ArgumentException("Invoice number already exists. Please use a different number.");
+                invoiceNumber = providedNumber;
+            }
+            else
+            {
+                invoiceNumber = await _invoiceRepository.GenerateInvoiceNumberAsync(effectiveUserId, invoicePrefix, invoiceDate);
+            }
 
             // Calculate item totals
             var invoiceItems = new List<InvoiceItem>();
@@ -87,9 +125,9 @@ namespace InvoiceApp.Application.Services
             var invoice = new Invoice
             {
                 InvoiceNumber = invoiceNumber,
-                UserId = userId,
+                UserId = effectiveUserId,
                 CustomerId = createInvoiceDto.CustomerId,
-                InvoiceDate = DateTime.UtcNow,
+                InvoiceDate = invoiceDate,
                 DueDate = createInvoiceDto.DueDate,
                 TotalAmount = totalAmount,
                 GstPercentage = createInvoiceDto.Items.First().GstPercentage,
@@ -139,12 +177,48 @@ namespace InvoiceApp.Application.Services
                     invoice.Status = "Unpaid";
             }
 
+            // Snapshot seller/company info at creation - invoice always shows creator's details as they were when created
+            invoice.SellerInfoSnapshot = userProfile != null
+                ? JsonSerializer.Serialize(new InvoiceSellerInfoDto
+                {
+                    Name = userProfile.Name,
+                    Email = userProfile.Email,
+                    BusinessName = userProfile.BusinessName,
+                    GstNumber = userProfile.GstNumber,
+                    Address = userProfile.Address,
+                    BankName = userProfile.BankName,
+                    BankAccountNo = userProfile.BankAccountNo,
+                    IfscCode = userProfile.IfscCode,
+                    PanNumber = userProfile.PanNumber,
+                    MembershipNo = userProfile.MembershipNo,
+                    GstpNumber = userProfile.GstpNumber,
+                    City = userProfile.City,
+                    State = userProfile.State,
+                    Zip = userProfile.Zip,
+                    Phone = userProfile.Phone,
+                    LogoUrl = userProfile.LogoUrl,
+                    HeaderLogoBgColor = userProfile.HeaderLogoBgColor,
+                    AddressSectionBgColor = userProfile.AddressSectionBgColor,
+                    HeaderLogoTextColor = userProfile.HeaderLogoTextColor,
+                    AddressSectionTextColor = userProfile.AddressSectionTextColor,
+                    InvoiceHeaderFontSize = userProfile.InvoiceHeaderFontSize,
+                    AddressSectionFontSize = userProfile.AddressSectionFontSize,
+                    UseDefaultInvoiceFontSizes = userProfile.UseDefaultInvoiceFontSizes,
+                    GpayNumber = userProfile.GpayNumber,
+                    TaxPractitionerTitle = userProfile.TaxPractitionerTitle,
+                }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+                : null;
+
             var createdInvoice = await _invoiceRepository.AddAsync(invoice);
+
+            // Save products to catalog for autocomplete
+            await _productService.UpsertProductsFromInvoiceAsync(effectiveUserId,
+                createInvoiceDto.Items.Select(i => (i.ProductName, i.Rate, i.GstPercentage)));
 
             // Update customer total balance
             if (customer != null)
             {
-                var newBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
+                var newBalance = (await _invoiceRepository.GetByUserIdAsync(effectiveUserId))
                     .Where(i => i.CustomerId == customer.Id)
                     .Sum(i => i.BalanceAmount);
 
@@ -439,6 +513,10 @@ namespace InvoiceApp.Application.Services
             invoice.GrandTotal = totalAmount + totalGst;
             invoice.GstPercentage = updateInvoiceDto.Items.FirstOrDefault()?.GstPercentage ?? 0;
 
+            // Save products to catalog for autocomplete
+            await _productService.UpsertProductsFromInvoiceAsync(invoice.UserId,
+                updateInvoiceDto.Items.Select(i => (i.ProductName, i.Rate, i.GstPercentage)));
+
             // Reset payment amounts (since we're recalculating)
             invoice.PaidAmount = 0;
             invoice.WaveAmount = 0;
@@ -591,6 +669,38 @@ namespace InvoiceApp.Application.Services
                     Sgst = item.Sgst
                 }).ToList()
             };
+
+            // Snapshot seller info at duplication (duplicator's current profile)
+            newInvoice.SellerInfoSnapshot = userProfile != null
+                ? JsonSerializer.Serialize(new InvoiceSellerInfoDto
+                {
+                    Name = userProfile.Name,
+                    Email = userProfile.Email,
+                    BusinessName = userProfile.BusinessName,
+                    GstNumber = userProfile.GstNumber,
+                    Address = userProfile.Address,
+                    BankName = userProfile.BankName,
+                    BankAccountNo = userProfile.BankAccountNo,
+                    IfscCode = userProfile.IfscCode,
+                    PanNumber = userProfile.PanNumber,
+                    MembershipNo = userProfile.MembershipNo,
+                    GstpNumber = userProfile.GstpNumber,
+                    City = userProfile.City,
+                    State = userProfile.State,
+                    Zip = userProfile.Zip,
+                    Phone = userProfile.Phone,
+                    LogoUrl = userProfile.LogoUrl,
+                    HeaderLogoBgColor = userProfile.HeaderLogoBgColor,
+                    AddressSectionBgColor = userProfile.AddressSectionBgColor,
+                    HeaderLogoTextColor = userProfile.HeaderLogoTextColor,
+                    AddressSectionTextColor = userProfile.AddressSectionTextColor,
+                    InvoiceHeaderFontSize = userProfile.InvoiceHeaderFontSize,
+                    AddressSectionFontSize = userProfile.AddressSectionFontSize,
+                    UseDefaultInvoiceFontSizes = userProfile.UseDefaultInvoiceFontSizes,
+                    GpayNumber = userProfile.GpayNumber,
+                    TaxPractitionerTitle = userProfile.TaxPractitionerTitle,
+                }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+                : null;
 
             var createdInvoice = await _invoiceRepository.AddAsync(newInvoice);
 

@@ -13,12 +13,16 @@ interface DynamicInvoiceRendererProps {
   layout: InvoiceLayoutConfig;
   customer: Customer | null;
   items: InvoiceItem[];
-  dueDate: string;
+  invoiceDate: string;
   invoiceNumber: string;
   paymentStatus?: string;
   initialPayment?: number;
   waveAmount?: number;
   payments?: Payment[];
+  /** When viewing another user's invoice (e.g. admin views user's invoice), pass the invoice creator's company info */
+  companyInfo?: CompanyInfo | null;
+  /** When true, never fall back to logged-in user's profile - use only companyInfo */
+  forceUseCompanyInfo?: boolean;
   enableDrag?: boolean;
   onSectionReorder?: (sourceId: string, targetId: string) => void;
   enableFreePosition?: boolean;
@@ -145,11 +149,13 @@ export const DynamicInvoiceRenderer: React.FC<DynamicInvoiceRendererProps> = ({
   layout,
   customer,
   items,
-  dueDate,
+  invoiceDate: invoiceDateProp,
   invoiceNumber,
   paymentStatus,
   initialPayment = 0,
   waveAmount = 0,
+  companyInfo: companyInfoProp,
+  forceUseCompanyInfo = false,
   enableDrag = false,
   onSectionReorder,
   enableFreePosition = false,
@@ -158,6 +164,8 @@ export const DynamicInvoiceRenderer: React.FC<DynamicInvoiceRendererProps> = ({
 }) => {
   const { profile } = useAuth();
   const companyInfo = useMemo((): CompanyInfo | null => {
+    if (companyInfoProp) return companyInfoProp;
+    if (forceUseCompanyInfo) return null;
     if (!profile) return null;
     const logoUrl = normalizeLogoUrl(profile.logoUrl || (profile as { LogoUrl?: string }).LogoUrl);
     const p = profile as { bankAccountNo?: string };
@@ -185,9 +193,9 @@ export const DynamicInvoiceRenderer: React.FC<DynamicInvoiceRendererProps> = ({
       addressSectionTextColor: profile.addressSectionTextColor,
       gpayNumber: profile.gpayNumber,
     };
-  }, [profile]);
+  }, [profile, companyInfoProp, forceUseCompanyInfo]);
   const [isResizing, setIsResizing] = useState(false);
-  const invoiceDate = new Date().toISOString().split('T')[0];
+  const invoiceDate = invoiceDateProp || new Date().toISOString().split('T')[0];
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const resizeStateRef = useRef<{
@@ -212,7 +220,7 @@ export const DynamicInvoiceRenderer: React.FC<DynamicInvoiceRendererProps> = ({
     items,
     invoiceNumber,
     invoiceDate,
-    dueDate,
+    dueDate: '', // Disabled - using invoice date only
     paymentStatus,
     totals,
   };

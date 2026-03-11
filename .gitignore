@@ -29,6 +29,10 @@ Thumbs.db
 *.log
 logs/
 
+# Test results
+test-results/
+vitest-results.json
+
 # Misc
 *.user
 *.suo

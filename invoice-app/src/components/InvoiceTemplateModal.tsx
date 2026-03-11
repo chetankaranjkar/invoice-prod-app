@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDateFormat } from '../hooks/useDateFormat';
 import { X, Save, FolderOpen, Trash2, Edit2 } from 'lucide-react';
 import { api } from '../services/agent';
 import type { InvoiceTemplateDto, CreateInvoiceTemplateDto, InvoiceTemplateItemDto } from '../types';
@@ -18,6 +19,7 @@ export const InvoiceTemplateModal: React.FC<InvoiceTemplateModalProps> = ({
   currentItems,
 }) => {
   const { themeColors } = useTheme();
+  const formatDate = useDateFormat();
   const [templates, setTemplates] = useState<InvoiceTemplateDto[]>([]);
   const [loading, setLoading] = useState(false);
   const [showSaveForm, setShowSaveForm] = useState(false);
@@ -259,7 +261,7 @@ export const InvoiceTemplateModal: React.FC<InvoiceTemplateModalProps> = ({
                             <p className="text-sm text-gray-600 mb-2">{template.description}</p>
                           )}
                           <p className="text-xs text-gray-500">
-                            {template.items.length} item(s) • Created {new Date(template.createdAt).toLocaleDateString()}
+                            {template.items.length} item(s) • Created {formatDate(template.createdAt)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>

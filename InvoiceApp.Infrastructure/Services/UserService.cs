@@ -95,11 +95,23 @@ namespace InvoiceApp.Infrastructure.Services
             if (!string.IsNullOrEmpty(updateDto.AddressSectionTextColor))
                 user.AddressSectionTextColor = updateDto.AddressSectionTextColor;
 
+            if (updateDto.InvoiceHeaderFontSize.HasValue)
+                user.InvoiceHeaderFontSize = updateDto.InvoiceHeaderFontSize.Value;
+
+            if (updateDto.AddressSectionFontSize.HasValue)
+                user.AddressSectionFontSize = updateDto.AddressSectionFontSize.Value;
+
+            if (updateDto.UseDefaultInvoiceFontSizes.HasValue)
+                user.UseDefaultInvoiceFontSizes = updateDto.UseDefaultInvoiceFontSizes.Value;
+
             if (!string.IsNullOrEmpty(updateDto.GpayNumber))
                 user.GpayNumber = updateDto.GpayNumber;
 
             if (updateDto.TaxPractitionerTitle != null)
                 user.TaxPractitionerTitle = updateDto.TaxPractitionerTitle;
+
+            if (!string.IsNullOrEmpty(updateDto.DateFormat))
+                user.DateFormat = updateDto.DateFormat;
 
             if (!string.IsNullOrEmpty(updateDto.InvoicePrefix))
                 user.InvoicePrefix = updateDto.InvoicePrefix;

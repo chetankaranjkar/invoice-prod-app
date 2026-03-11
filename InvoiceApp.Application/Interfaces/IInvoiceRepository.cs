@@ -16,6 +16,8 @@ namespace InvoiceApp.Application.Interfaces
         Task<Invoice> AddAsync(Invoice invoice);
         Task UpdateAsync(Invoice invoice);
         Task<bool> DeleteAsync(int id);
-        Task<string> GenerateInvoiceNumberAsync(Guid userId, string prefix);
+        Task<string> GenerateInvoiceNumberAsync(Guid userId, string prefix, DateTime? forDate = null);
+        /// <summary>Check if an invoice number already exists for the given user.</summary>
+        Task<bool> InvoiceNumberExistsAsync(Guid userId, string invoiceNumber);
     }
 }

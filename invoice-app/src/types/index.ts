@@ -3,10 +3,16 @@ export type PaymentStatus = 'Draft' | 'Sent' | 'Unpaid' | 'Partially Paid' | 'Pa
 export interface CreateInvoiceDto {
   customerId: number;
   dueDate?: string;
+  /** Optional. When provided, use this invoice number (must be unique per user). Otherwise auto-generate. */
+  invoiceNumber?: string;
+  /** Optional. Invoice created date (YYYY-MM-DD). Defaults to today. Allows backdating. */
+  invoiceDate?: string;
   invoicePrefix: string;
   items: Omit<InvoiceItem, 'id' | 'amount' | 'gstAmount' | 'cgst' | 'sgst'>[];
   status?: PaymentStatus;
   initialPayment?: number;
+  /** For Admin: create invoice on behalf of this user. Invoice will use their company info. */
+  onBehalfOfUserId?: string;
 }
 
 export interface UpdateInvoiceDto {
@@ -180,8 +186,12 @@ export interface UserProfile {
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
   addressSectionTextColor?: string;
+  invoiceHeaderFontSize?: number;
+  addressSectionFontSize?: number;
+  useDefaultInvoiceFontSizes?: boolean;
   gpayNumber?: string;
   taxPractitionerTitle?: string;
+  dateFormat?: string;
   defaultGstPercentage?: number;
   disableQuantity?: boolean;
   invoicePrefix?: string;
@@ -210,6 +220,9 @@ export interface CompanyInfo {
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
   addressSectionTextColor?: string;
+  invoiceHeaderFontSize?: number;
+  addressSectionFontSize?: number;
+  useDefaultInvoiceFontSizes?: boolean;
   gpayNumber?: string;
   taxPractitionerTitle?: string;
 }
@@ -233,8 +246,12 @@ export interface UpdateUserProfileDto {
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
   addressSectionTextColor?: string;
+  invoiceHeaderFontSize?: number;
+  addressSectionFontSize?: number;
+  useDefaultInvoiceFontSizes?: boolean;
   gpayNumber?: string;
   taxPractitionerTitle?: string;
+  dateFormat?: string;
   invoicePrefix?: string;
   defaultGstPercentage?: number;
   disableQuantity?: boolean;
@@ -271,6 +288,13 @@ export interface User {
 export interface Customer {
   id: number;
   customerName: string;
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  /** True if this customer was shared with the current user (not owned by them). */
+  isSharedWithMe?: boolean;
+  /** User IDs this customer is shared with (Admin only). */
+  sharedWithUserIds?: string[];
   gstNumber?: string;
   panNumber?: string;
   city?: string;
@@ -289,6 +313,8 @@ export interface Customer {
 
 export interface CreateCustomerDto {
   customerName: string;
+  /** Admin only: user IDs to share this customer with (users created by admin). */
+  sharedWithUserIds?: string[];
   gstNumber?: string;
   email?: string;
   phone?: string;
@@ -300,6 +326,14 @@ export interface CreateCustomerDto {
   City?: string;
   State?: string;
   Zip?: string;
+}
+
+/** Product from API for autocomplete when adding invoice items */
+export interface Product {
+  id: number;
+  name: string;
+  defaultRate?: number;
+  defaultGstPercentage?: number;
 }
 
 export interface InvoiceItem {
@@ -314,12 +348,40 @@ export interface InvoiceItem {
   sgst: number;
 }
 
+/** Company info of the user who created the invoice (for display when admin views another user's invoice) */
+export interface InvoiceSellerInfo {
+  name: string;
+  email?: string;
+  businessName?: string;
+  gstNumber?: string;
+  address?: string;
+  bankName?: string;
+  bankAccountNo?: string;
+  ifscCode?: string;
+  panNumber?: string;
+  membershipNo?: string;
+  gstpNumber?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  phone?: string;
+  logoUrl?: string;
+  headerLogoBgColor?: string;
+  addressSectionBgColor?: string;
+  headerLogoTextColor?: string;
+  addressSectionTextColor?: string;
+  gpayNumber?: string;
+  taxPractitionerTitle?: string;
+}
+
 export interface Invoice {
   id: number;
   invoiceNumber: string;
   customerId: number;
   customerName?: string;
+  userId?: string; // User who created the invoice (for admin to filter own vs team)
   userName?: string; // Name of the user who created the invoice (for admin view)
+  sellerInfo?: InvoiceSellerInfo; // Company details of invoice creator (when admin views another user's invoice)
   invoiceDate: string;
   dueDate?: string;
   totalAmount: number;
@@ -369,6 +431,8 @@ export interface AuthResponse {
 
 export interface DashboardStats {
   totalPendingAmount: number;
+  /** Admin only: pending amount from admin's own invoices */
+  adminOwnPendingAmount?: number;
   totalCustomers: number;
   paidCustomersCount: number;
   unpaidCustomersCount: number;

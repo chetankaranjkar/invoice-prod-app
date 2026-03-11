@@ -171,6 +171,7 @@ export const api = {
   // User Profile APIs - FIXED FormData handling
   user: {
     getProfile: () => agent.get<any>('User/profile'),
+    getProfileById: (userId: string) => agent.get<any>(`UserManagement/users/${userId}/profile`),
     updateProfile: (data: any) => agent.put<any>('User/profile', data),
 
     uploadLogo: (logoFile: File) => {
@@ -223,11 +224,25 @@ export const api = {
 
   // Customer APIs
   customers: {
-    getList: () => agent.get<any[]>('Customers'),
+    getList: (userId?: string) => agent.get<any[]>('Customers', userId ? { params: { userId } } : {}),
     create: (data: any) => agent.post<any>('Customers', data),
     getById: (id: number) => agent.get<any>(`Customers/${id}`),
     update: (id: number, data: any) => agent.put<any>(`Customers/${id}`, data),
     delete: (id: number) => agent.delete<any>(`Customers/${id}`),
+    share: (id: number, userIds: string[]) => agent.post(`Customers/${id}/share`, { userIds }),
+  },
+
+  // Product APIs (for autocomplete and CRUD)
+  products: {
+    search: (q: string, limit?: number) =>
+      agent.get<any[]>('Product/search', { params: { q: q || undefined, limit: limit ?? 20 } }),
+    getList: () => agent.get<any[]>('Product'),
+    getById: (id: number) => agent.get<any>(`Product/${id}`),
+    create: (data: { name: string; defaultRate?: number; defaultGstPercentage?: number }) =>
+      agent.post<any>('Product', data),
+    update: (id: number, data: { name: string; defaultRate?: number; defaultGstPercentage?: number }) =>
+      agent.put<any>(`Product/${id}`, data),
+    delete: (id: number) => agent.delete(`Product/${id}`),
   },
 
   // Invoice APIs

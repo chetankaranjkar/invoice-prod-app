@@ -18,6 +18,7 @@ namespace InvoiceApp.Application
             services.AddScoped<IInvoiceTemplateService, InvoiceTemplateService>();
             services.AddScoped<IRecurringInvoiceService, RecurringInvoiceService>();
             services.AddScoped<IInvoiceLayoutService, InvoiceLayoutService>();
+            services.AddScoped<IProductService, ProductService>();
             services.AddSingleton<IInvoiceLayoutSchemaProvider, InvoiceLayoutSchemaProvider>();
 
             return services;

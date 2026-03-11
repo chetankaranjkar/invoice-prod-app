@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useDateFormat } from '../hooks/useDateFormat';
 import { X, DollarSign, FileText } from 'lucide-react';
 import { api } from '../services/agent';
 import { AddPaymentModal } from './AddPaymentModal';
@@ -17,6 +18,7 @@ export const UserInvoicesModal: React.FC<UserInvoicesModalProps> = ({
   userId,
   userName,
 }) => {
+  const formatDate = useDateFormat();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -176,7 +178,7 @@ export const UserInvoicesModal: React.FC<UserInvoicesModalProps> = ({
                           {invoice.invoiceNumber}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(invoice.invoiceDate).toLocaleDateString()}
+                          {formatDate(invoice.invoiceDate)}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
                           {invoice.customerName || 'N/A'}

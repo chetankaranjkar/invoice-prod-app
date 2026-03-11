@@ -115,71 +115,78 @@ namespace InvoiceApp.Infrastructure.Repositories
             return true;
         }
 
-        public async Task<string> GenerateInvoiceNumberAsync(Guid userId, string prefix)
+        /// <summary>Get Indian financial year string (e.g. 2024-25 for Apr 2024 - Mar 2025)</summary>
+        private static string GetFinancialYearString(DateTime date)
         {
-            // Get all invoices for this user with the same prefix
+            var year = date.Year;
+            var month = date.Month;
+            int startYear = month >= 4 ? year : year - 1;
+            int endYear = startYear + 1;
+            return $"{startYear}-{endYear % 100:D2}";
+        }
+
+        public async Task<string> GenerateInvoiceNumberAsync(Guid userId, string prefix, DateTime? forDate = null)
+        {
+            var dateForFy = forDate ?? DateTime.UtcNow;
+            var fy = GetFinancialYearString(dateForFy);
+            var fySuffix = $" / {fy}";
+
+            // Get invoices for this user with same prefix AND same financial year (format: "INV0001 / 2024-25")
             var invoices = await _context.Invoices
                 .AsNoTracking()
-                .Where(i => i.UserId == userId && i.InvoiceNumber.StartsWith(prefix))
+                .Where(i => i.UserId == userId && i.InvoiceNumber.StartsWith(prefix) && i.InvoiceNumber.EndsWith(fySuffix))
                 .Select(i => i.InvoiceNumber)
                 .ToListAsync();
 
             var nextNumber = 1;
-            
+
             if (invoices.Any())
             {
-                // Extract numbers from all invoice numbers and find the maximum
-                // Handle both formats: "INV00001" and "INV4ADB0001" (from seed data)
                 var numbers = invoices
-                    .Select(inv => 
+                    .Select(inv =>
                     {
-                        var numberStr = inv.Replace(prefix, "");
-                        // Try to parse the entire remaining string as a number
-                        if (int.TryParse(numberStr, out int num))
+                        var withoutPrefix = inv.StartsWith(prefix) ? inv.Substring(prefix.Length) : inv;
+                        var withoutFy = withoutPrefix.Replace(fySuffix, "").Trim();
+                        if (int.TryParse(withoutFy.TrimStart('0'), out int num))
                             return num;
-                        // If that fails, try to extract trailing digits (for seed data format)
-                        var trailingDigits = Regex.Match(numberStr, @"\d+$");
-                        if (trailingDigits.Success && int.TryParse(trailingDigits.Value, out int trailingNum))
-                            return trailingNum;
-                        return 0;
+                        if (int.TryParse(withoutFy, out int n))
+                            return n;
+                        var digits = Regex.Match(withoutFy, @"\d+").Value;
+                        return int.TryParse(digits, out int d) ? d : 0;
                     })
                     .Where(n => n > 0)
                     .ToList();
 
                 if (numbers.Any())
-                {
                     nextNumber = numbers.Max() + 1;
+            }
+
+            var invoiceNumber = $"{prefix}{nextNumber}{fySuffix}";
+            var attempts = 0;
+            const int maxAttempts = 1000;
+
+            while (await _context.Invoices.AsNoTracking().AnyAsync(i => i.UserId == userId && i.InvoiceNumber == invoiceNumber))
+            {
+                nextNumber++;
+                invoiceNumber = $"{prefix}{nextNumber}{fySuffix}";
+                if (++attempts >= maxAttempts)
+                {
+                    var timestamp = dateForFy.ToString("yyyyMMddHHmmss");
+                    invoiceNumber = $"{prefix}{timestamp}{fySuffix}";
+                    break;
                 }
             }
 
-            // Ensure uniqueness by checking if the generated number already exists
-            // This handles race conditions and ensures we never create duplicates
-            string invoiceNumber;
-            int attempts = 0;
-            const int maxAttempts = 1000; // Increased limit for safety
-            
-            do
-            {
-                invoiceNumber = $"{prefix}{nextNumber:D5}";
-                var exists = await _context.Invoices
-                    .AsNoTracking()
-                    .AnyAsync(i => i.InvoiceNumber == invoiceNumber);
-                
-                if (!exists)
-                    break;
-                    
-                nextNumber++;
-                attempts++;
-            } while (attempts < maxAttempts);
-
-            if (attempts >= maxAttempts)
-            {
-                // Fallback: use timestamp-based number if we can't find a unique sequential number
-                var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
-                invoiceNumber = $"{prefix}{timestamp}";
-            }
-
             return invoiceNumber;
+        }
+
+        public async Task<bool> InvoiceNumberExistsAsync(Guid userId, string invoiceNumber)
+        {
+            if (string.IsNullOrWhiteSpace(invoiceNumber))
+                return false;
+            return await _context.Invoices
+                .AsNoTracking()
+                .AnyAsync(i => i.UserId == userId && i.InvoiceNumber == invoiceNumber.Trim());
         }
     }
 }

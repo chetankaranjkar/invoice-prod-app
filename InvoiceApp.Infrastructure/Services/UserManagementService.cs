@@ -44,6 +44,9 @@ namespace InvoiceApp.Infrastructure.Services
                 return new List<UserListDto>();
             }
 
+            // Never show MasterUser in the users list (they are super-admin, not manageable)
+            query = query.Where(u => u.Role != "MasterUser");
+
             // Get users with their creators using a join
             var users = await (from u in query
                               join creator in _context.Users on u.CreatedBy equals creator.Id into creatorGroup
@@ -57,7 +60,19 @@ namespace InvoiceApp.Infrastructure.Services
                                   Role = u.Role,
                                   BusinessName = u.BusinessName,
                                   CreatedAt = u.CreatedAt,
-                                  CreatedByName = creator != null ? creator.Name : null
+                                  CreatedByName = creator != null ? creator.Name : null,
+                                  Address = u.Address,
+                                  HeaderLogoBgColor = u.HeaderLogoBgColor,
+                                  AddressSectionBgColor = u.AddressSectionBgColor,
+                                  HeaderLogoTextColor = u.HeaderLogoTextColor,
+                                  AddressSectionTextColor = u.AddressSectionTextColor,
+                                  TaxPractitionerTitle = u.TaxPractitionerTitle,
+                                  MembershipNo = u.MembershipNo,
+                                  GstpNumber = u.GstpNumber,
+                                  Phone = u.Phone,
+                                  City = u.City,
+                                  State = u.State,
+                                  Zip = u.Zip
                               }).ToListAsync();
 
             return users;
@@ -129,7 +144,19 @@ namespace InvoiceApp.Infrastructure.Services
                 Role = user.Role,
                 BusinessName = user.BusinessName,
                 CreatedAt = user.CreatedAt,
-                CreatedByName = null // Will be populated if needed
+                CreatedByName = null,
+                Address = user.Address,
+                HeaderLogoBgColor = user.HeaderLogoBgColor,
+                AddressSectionBgColor = user.AddressSectionBgColor,
+                HeaderLogoTextColor = user.HeaderLogoTextColor,
+                AddressSectionTextColor = user.AddressSectionTextColor,
+                TaxPractitionerTitle = user.TaxPractitionerTitle,
+                MembershipNo = user.MembershipNo,
+                GstpNumber = user.GstpNumber,
+                Phone = user.Phone,
+                City = user.City,
+                State = user.State,
+                Zip = user.Zip
             };
         }
 
@@ -227,7 +254,19 @@ namespace InvoiceApp.Infrastructure.Services
                 Role = user.Role,
                 BusinessName = user.BusinessName,
                 CreatedAt = user.CreatedAt,
-                CreatedByName = null // Will be populated if needed
+                CreatedByName = null,
+                Address = user.Address,
+                HeaderLogoBgColor = user.HeaderLogoBgColor,
+                AddressSectionBgColor = user.AddressSectionBgColor,
+                HeaderLogoTextColor = user.HeaderLogoTextColor,
+                AddressSectionTextColor = user.AddressSectionTextColor,
+                TaxPractitionerTitle = user.TaxPractitionerTitle,
+                MembershipNo = user.MembershipNo,
+                GstpNumber = user.GstpNumber,
+                Phone = user.Phone,
+                City = user.City,
+                State = user.State,
+                Zip = user.Zip
             };
         }
 
@@ -259,8 +298,28 @@ namespace InvoiceApp.Infrastructure.Services
                 Role = user.Role,
                 BusinessName = user.BusinessName,
                 CreatedAt = user.CreatedAt,
-                CreatedByName = null // Will be populated if needed
+                CreatedByName = null,
+                Address = user.Address,
+                HeaderLogoBgColor = user.HeaderLogoBgColor,
+                AddressSectionBgColor = user.AddressSectionBgColor,
+                HeaderLogoTextColor = user.HeaderLogoTextColor,
+                AddressSectionTextColor = user.AddressSectionTextColor,
+                TaxPractitionerTitle = user.TaxPractitionerTitle,
+                MembershipNo = user.MembershipNo,
+                GstpNumber = user.GstpNumber,
+                Phone = user.Phone,
+                City = user.City,
+                State = user.State,
+                Zip = user.Zip
             };
+        }
+
+        public async Task<List<Guid>> GetUserIdsCreatedByAdminAsync(Guid adminId)
+        {
+            return await _context.Users
+                .Where(u => u.CreatedBy == adminId)
+                .Select(u => u.Id)
+                .ToListAsync();
         }
 
         private string HashPassword(string password)

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ToWords } from 'to-words';
 import type { CompanyInfo, Customer, InvoiceItem, Payment } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDateFormat } from '../../hooks/useDateFormat';
 import StaticInvoiceHeader from './sections/header/StaticInvoiceHeader';
 import StaticInvoiceItems from './sections/invoiceitems/invoicedata';
 import BankandCost from './sections/BankandCost/BankandCost';
@@ -9,25 +10,40 @@ import BankandCost from './sections/BankandCost/BankandCost';
 interface TaxInvoiceProps {
   customer: Customer | null;
   items: InvoiceItem[];
-  dueDate: string;
+  invoiceDate: string;
   invoiceNumber: string;
   paymentStatus?: string;
   initialPayment?: number;
   waveAmount?: number;
   payments?: Payment[];
+  /** When viewing another user's invoice (e.g. admin views user's invoice), pass the invoice creator's company info */
+  companyInfo?: CompanyInfo | null;
+  /** When true, never fall back to logged-in user's profile - use only companyInfo (or null/placeholder while loading) */
+  forceUseCompanyInfo?: boolean;
+  /** When true, company info is being loaded - show loading placeholder */
+  companyInfoLoading?: boolean;
 }
 
 function TaxInvoice({
   customer,
   items,
-  dueDate: _dueDate,
+  invoiceDate: invoiceDateProp,
   invoiceNumber,
   paymentStatus: _paymentStatus = 'Unpaid',
   initialPayment = 0,
   waveAmount = 0,
+  companyInfo: companyInfoProp,
+  forceUseCompanyInfo = false,
+  companyInfoLoading = false,
 }: TaxInvoiceProps) {
   const { profile } = useAuth();
+  const formatDate = useDateFormat();
   const companyInfo = useMemo((): CompanyInfo | null => {
+    if (companyInfoProp) return companyInfoProp;
+    if (forceUseCompanyInfo && companyInfoLoading) {
+      return { name: 'Loading...', businessName: 'Loading...' };
+    }
+    if (forceUseCompanyInfo) return null;
     if (!profile) return null;
     return {
       name: profile.name,
@@ -50,12 +66,15 @@ function TaxInvoice({
       addressSectionBgColor: profile.addressSectionBgColor,
       headerLogoTextColor: profile.headerLogoTextColor,
       addressSectionTextColor: profile.addressSectionTextColor,
+      invoiceHeaderFontSize: profile.invoiceHeaderFontSize,
+      addressSectionFontSize: profile.addressSectionFontSize,
+      useDefaultInvoiceFontSizes: profile.useDefaultInvoiceFontSizes,
       gpayNumber: profile.gpayNumber,
       taxPractitionerTitle: profile.taxPractitionerTitle,
     };
-  }, [profile]);
+  }, [profile, companyInfoProp, forceUseCompanyInfo, companyInfoLoading]);
   const defaultGstPercentage = profile?.defaultGstPercentage ?? 18;
-  const invoiceDate = new Date().toISOString().split('T')[0];
+  const invoiceDate = invoiceDateProp || new Date().toISOString().split('T')[0];
   const toWords = new ToWords({
     localeCode: 'en-IN',
     converterOptions: {
@@ -106,6 +125,7 @@ function TaxInvoice({
         customer={customer}
         invoiceNumber={invoiceNumber}
         invoiceDate={invoiceDate}
+        formattedInvoiceDate={formatDate(invoiceDate)}
       />
       <StaticInvoiceItems items={items} />
       <BankandCost

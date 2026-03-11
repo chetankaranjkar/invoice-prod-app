@@ -1,21 +1,25 @@
-import React, { useState, useMemo } from 'react';
-import { X, UserPlus, Save, Building2, Mail, Phone, MapPin, CreditCard, FileText, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, UserPlus, Save, Building2, Mail, Phone, MapPin, CreditCard, FileText, AlertCircle, CheckCircle2, ChevronRight, ChevronLeft, Share2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import type { CreateCustomerDto } from '../types';
+import type { CreateCustomerDto, UserListDto } from '../types';
 import { api } from '../services/agent';
+import { getApiErrorMessage } from '../utils/helpers';
 
 interface AddCustomerModalProps {
     isOpen: boolean;
     onClose: () => void;
     onCustomerAdded: (customer: any) => void;
+    /** Existing customer names (for duplicate check). Pass from parent's customers list. */
+    existingCustomerNames?: string[];
 }
 
-type FormSection = 'basic' | 'contact' | 'address' | 'banking';
+type FormSection = 'basic' | 'contact' | 'address' | 'banking' | 'share';
 
 export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     isOpen,
     onClose,
     onCustomerAdded,
+    existingCustomerNames = [],
 }) => {
     const { themeColors } = useTheme();
     const [activeSection, setActiveSection] = useState<FormSection>('basic');
@@ -31,8 +35,11 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         panNumber: '',
         City: '',
         State: '',
-        Zip: ''
+        Zip: '',
+        sharedWithUserIds: []
     });
+    const [userRole, setUserRole] = useState<string>('User');
+    const [managedUsers, setManagedUsers] = useState<UserListDto[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -40,14 +47,39 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         basic: [],
         contact: [],
         address: [],
-        banking: []
+        banking: [],
+        share: []
     });
+
+    useEffect(() => {
+        const loadRoleAndUsers = async () => {
+            try {
+                const profile = await api.user.getProfile();
+                setUserRole(profile.data?.role || 'User');
+                if (profile.data?.role === 'Admin') {
+                    const usersRes = await api.userManagement.getAllUsers();
+                    const users = usersRes.data || [];
+                    setManagedUsers(users);
+                    // When admin creates customer, pre-check all managed users in Share (exclude admin self)
+                    const adminId = profile.data?.id;
+                    const idsToShare = users
+                        .filter((u: UserListDto) => u.id !== adminId)
+                        .map((u: UserListDto) => u.id);
+                    setFormData(prev => ({ ...prev, sharedWithUserIds: idsToShare }));
+                }
+            } catch {
+                setManagedUsers([]);
+            }
+        };
+        if (isOpen) loadRoleAndUsers();
+    }, [isOpen]);
 
     const sections: { id: FormSection; label: string; icon: React.ReactNode }[] = [
         { id: 'basic', label: 'Basic Info', icon: <Building2 className="h-4 w-4" /> },
         { id: 'contact', label: 'Contact', icon: <Mail className="h-4 w-4" /> },
         { id: 'address', label: 'Address', icon: <MapPin className="h-4 w-4" /> },
         { id: 'banking', label: 'Banking', icon: <CreditCard className="h-4 w-4" /> },
+        ...(userRole === 'Admin' ? [{ id: 'share' as FormSection, label: 'Share', icon: <Share2 className="h-4 w-4" /> }] : []),
     ];
 
     const handleSubmit = async (e?: React.FormEvent) => {
@@ -67,7 +99,9 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         });
 
         // Validate all sections
-        const sectionsToValidate: FormSection[] = ['basic', 'contact', 'address', 'banking'];
+        const sectionsToValidate: FormSection[] = userRole === 'Admin'
+            ? ['basic', 'contact', 'address', 'banking', 'share']
+            : ['basic', 'contact', 'address', 'banking'];
         let allValid = true;
         sectionsToValidate.forEach(section => {
             if (!validateSection(section)) {
@@ -90,7 +124,11 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         setError('');
 
         try {
-            const response = await api.customers.create(formData);
+            const payload: CreateCustomerDto = { ...formData };
+            if (userRole !== 'Admin' || !payload.sharedWithUserIds?.length) {
+                delete payload.sharedWithUserIds;
+            }
+            const response = await api.customers.create(payload);
             onCustomerAdded(response.data);
             // Reset form
             setFormData({
@@ -105,14 +143,15 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 panNumber: '',
                 City: '',
                 State: '',
-                Zip: ''
+                Zip: '',
+                sharedWithUserIds: []
             });
             setTouched({});
-            setSectionErrors({ basic: [], contact: [], address: [], banking: [] });
+            setSectionErrors({ basic: [], contact: [], address: [], banking: [], share: [] });
             setActiveSection('basic');
             onClose();
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Failed to create customer');
+            setError(getApiErrorMessage(err, 'Failed to create customer. Please try again.'));
         } finally {
             setLoading(false);
         }
@@ -131,8 +170,19 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     const validateField = (fieldName: keyof CreateCustomerDto, value: any): string | null => {
         const trimmedValue = value?.toString().trim() || '';
 
-        if (!trimmedValue) {
-            return `${getFieldLabel(fieldName)} is required`;
+        // Only Customer Name is required
+        if (fieldName === 'customerName' && !trimmedValue) {
+            return 'Customer Name is required';
+        }
+        // Duplicate customer name check (case-insensitive)
+        if (fieldName === 'customerName' && trimmedValue && existingCustomerNames.length > 0) {
+            const nameLower = trimmedValue.toLowerCase();
+            if (existingCustomerNames.some((n) => n.toLowerCase() === nameLower)) {
+                return 'A customer with this name already exists. Please use a different name.';
+            }
+        }
+        if (fieldName !== 'customerName' && !trimmedValue) {
+            return null; // Optional fields - no error when empty
         }
 
         // Email validation
@@ -182,61 +232,35 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         return null;
     };
 
-    const getFieldLabel = (fieldName: keyof CreateCustomerDto): string => {
-        const labels: Record<string, string> = {
-            customerName: 'Customer Name',
-            gstNumber: 'GST Number',
-            panNumber: 'PAN Number',
-            email: 'Email Address',
-            phone: 'Phone Number',
-            billingAddress: 'Billing Address',
-            City: 'City',
-            State: 'State',
-            Zip: 'Pin Code',
-            bankName: 'Bank Name',
-            bankAccountNo: 'Account Number',
-            ifscCode: 'IFSC Code'
-        };
-        return labels[fieldName] || fieldName;
-    };
-
     const validateSection = (section: FormSection): boolean => {
         const errors: string[] = [];
 
         switch (section) {
             case 'basic':
                 if (!formData.customerName?.trim()) errors.push('Customer Name is required');
-                if (!formData.gstNumber?.trim()) errors.push('GST Number is required');
-                if (!formData.panNumber?.trim()) errors.push('PAN Number is required');
-                // Validate formats
+                else if (existingCustomerNames.length > 0) {
+                    const nameLower = formData.customerName.trim().toLowerCase();
+                    if (existingCustomerNames.some((n) => n.toLowerCase() === nameLower)) {
+                        errors.push('A customer with this name already exists. Please use a different name.');
+                    }
+                }
+                // Validate formats only when provided (all other fields optional)
                 const gstError = validateField('gstNumber', formData.gstNumber);
                 if (gstError) errors.push(gstError);
                 const panError = validateField('panNumber', formData.panNumber);
                 if (panError) errors.push(panError);
                 break;
             case 'contact':
-                if (!formData.email?.trim()) errors.push('Email Address is required');
-                if (!formData.phone?.trim()) errors.push('Phone Number is required');
-                // Validate formats
                 const emailError = validateField('email', formData.email);
                 if (emailError) errors.push(emailError);
                 const phoneError = validateField('phone', formData.phone);
                 if (phoneError) errors.push(phoneError);
                 break;
             case 'address':
-                if (!formData.billingAddress?.trim()) errors.push('Billing Address is required');
-                if (!formData.City?.trim()) errors.push('City is required');
-                if (!formData.State?.trim()) errors.push('State is required');
-                if (!formData.Zip?.trim()) errors.push('Pin Code is required');
-                // Validate pin code format
                 const zipError = validateField('Zip', formData.Zip);
                 if (zipError) errors.push(zipError);
                 break;
             case 'banking':
-                if (!formData.bankName?.trim()) errors.push('Bank Name is required');
-                if (!formData.bankAccountNo?.trim()) errors.push('Account Number is required');
-                if (!formData.ifscCode?.trim()) errors.push('IFSC Code is required');
-                // Validate IFSC format
                 const ifscError = validateField('ifscCode', formData.ifscCode);
                 if (ifscError) errors.push(ifscError);
                 break;
@@ -252,7 +276,8 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
             basic: ['customerName', 'gstNumber', 'panNumber'],
             contact: ['email', 'phone'],
             address: ['billingAddress', 'City', 'State', 'Zip'],
-            banking: ['bankName', 'bankAccountNo', 'ifscCode']
+            banking: ['bankName', 'bankAccountNo', 'ifscCode'],
+            share: []
         };
 
         currentSectionFields[activeSection].forEach(field => {
@@ -266,7 +291,9 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         }
 
         // Move to next section
-        const sectionOrder: FormSection[] = ['basic', 'contact', 'address', 'banking'];
+        const sectionOrder: FormSection[] = userRole === 'Admin'
+            ? ['basic', 'contact', 'address', 'banking', 'share']
+            : ['basic', 'contact', 'address', 'banking'];
         const currentIndex = sectionOrder.indexOf(activeSection);
         if (currentIndex < sectionOrder.length - 1) {
             setActiveSection(sectionOrder[currentIndex + 1]);
@@ -287,20 +314,10 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         return !error;
     };
 
-    // Check if banking section is valid without calling setState
-    const isBankingSectionValid = useMemo(() => {
-        const hasBankName = formData.bankName?.trim();
-        const hasAccountNo = formData.bankAccountNo?.trim();
-        const hasIfsc = formData.ifscCode?.trim();
-        const ifscValid = hasIfsc && hasIfsc.length === 11;
-        return hasBankName && hasAccountNo && hasIfsc && ifscValid;
-    }, [formData.bankName, formData.bankAccountNo, formData.ifscCode]);
-
     const getSectionProgress = (section: FormSection): number => {
         switch (section) {
             case 'basic':
-                const basicFields = [formData.customerName, formData.gstNumber, formData.panNumber].filter(Boolean).length;
-                return (basicFields / 3) * 100;
+                return formData.customerName?.trim() ? 100 : 0;
             case 'contact':
                 const contactFields = [formData.email, formData.phone].filter(Boolean).length;
                 return (contactFields / 2) * 100;
@@ -310,9 +327,19 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
             case 'banking':
                 const bankingFields = [formData.bankName, formData.bankAccountNo, formData.ifscCode].filter(Boolean).length;
                 return (bankingFields / 3) * 100;
+            case 'share':
+                return 100; // Optional section
             default:
                 return 0;
         }
+    };
+
+    const toggleSharedUser = (userId: string) => {
+        const current = formData.sharedWithUserIds || [];
+        const next = current.includes(userId)
+            ? current.filter(id => id !== userId)
+            : [...current, userId];
+        setFormData(prev => ({ ...prev, sharedWithUserIds: next }));
     };
 
     if (!isOpen) return null;
@@ -451,7 +478,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     <FileText className="h-4 w-4 inline mr-1" />
-                                                    GST Number <span className="text-red-500">*</span>
+                                                    GST Number
                                                 </label>
                                                 <input
                                                     type="text"
@@ -459,7 +486,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.gstNumber}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('gstNumber')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all uppercase ${!isFieldValid('gstNumber') && touched.gstNumber
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -475,7 +501,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                                     <FileText className="h-4 w-4 inline mr-1" />
-                                                    PAN Number <span className="text-red-500">*</span>
+                                                    PAN Number
                                                 </label>
                                                 <input
                                                     type="text"
@@ -483,7 +509,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.panNumber}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('panNumber')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all uppercase ${!isFieldValid('panNumber') && touched.panNumber
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -513,7 +538,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                                 <Mail className="h-4 w-4 inline mr-1" />
-                                                Email Address <span className="text-red-500">*</span>
+                                                Email Address
                                             </label>
                                             <input
                                                 type="email"
@@ -521,7 +546,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                 value={formData.email}
                                                 onChange={handleChange}
                                                 onBlur={() => handleBlur('email')}
-                                                required
                                                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('email') && touched.email
                                                         ? 'border-red-300 focus:ring-red-500'
                                                         : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -536,7 +560,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                                 <Phone className="h-4 w-4 inline mr-1" />
-                                                Phone Number <span className="text-red-500">*</span>
+                                                Phone Number
                                             </label>
                                             <input
                                                 type="tel"
@@ -544,7 +568,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                 value={formData.phone}
                                                 onChange={handleChange}
                                                 onBlur={() => handleBlur('phone')}
-                                                required
                                                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('phone') && touched.phone
                                                         ? 'border-red-300 focus:ring-red-500'
                                                         : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -571,14 +594,13 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Billing Address <span className="text-red-500">*</span>
+                                                Billing Address
                                             </label>
                                             <textarea
                                                 name="billingAddress"
                                                 value={formData.billingAddress}
                                                 onChange={handleChange}
                                                 onBlur={() => handleBlur('billingAddress')}
-                                                required
                                                 rows={3}
                                                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all resize-none ${!isFieldValid('billingAddress') && touched.billingAddress
                                                         ? 'border-red-300 focus:ring-red-500'
@@ -594,7 +616,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    City <span className="text-red-500">*</span>
+                                                    City
                                                 </label>
                                                 <input
                                                     type="text"
@@ -602,7 +624,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.City}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('City')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('City') && touched.City
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -616,7 +637,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
 
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    State <span className="text-red-500">*</span>
+                                                    State
                                                 </label>
                                                 <input
                                                     type="text"
@@ -624,7 +645,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.State}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('State')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('State') && touched.State
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -638,7 +658,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
 
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Pin Code <span className="text-red-500">*</span>
+                                                    Pin Code
                                                 </label>
                                                 <input
                                                     type="text"
@@ -646,7 +666,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.Zip}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('Zip')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('Zip') && touched.Zip
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -664,6 +683,39 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                             </div>
                         )}
 
+                        {/* Share Section (Admin only) */}
+                        {activeSection === 'share' && userRole === 'Admin' && (
+                            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                        <Share2 className="h-5 w-5 mr-2 text-gray-600" />
+                                        Share with Users
+                                    </h3>
+                                    <p className="text-sm text-gray-600 mb-4">
+                                        Select users you manage who can use this customer for invoices.
+                                    </p>
+                                    {managedUsers.length === 0 ? (
+                                        <p className="text-sm text-gray-500">No users to share with. Create users first from User Management.</p>
+                                    ) : (
+                                        <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                                            {managedUsers.map(u => (
+                                                <label key={u.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-100 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={(formData.sharedWithUserIds || []).includes(u.id)}
+                                                        onChange={() => toggleSharedUser(u.id)}
+                                                        className="rounded border-gray-300"
+                                                    />
+                                                    <span className="text-sm font-medium">{u.name}</span>
+                                                    <span className="text-xs text-gray-500">{u.email}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Banking Information Section */}
                         {activeSection === 'banking' && (
                             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
@@ -675,7 +727,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Bank Name <span className="text-red-500">*</span>
+                                                Bank Name
                                             </label>
                                             <input
                                                 type="text"
@@ -683,7 +735,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                 value={formData.bankName}
                                                 onChange={handleChange}
                                                 onBlur={() => handleBlur('bankName')}
-                                                required
                                                 className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('bankName') && touched.bankName
                                                         ? 'border-red-300 focus:ring-red-500'
                                                         : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -698,7 +749,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    Account Number <span className="text-red-500">*</span>
+                                                    Account Number
                                                 </label>
                                                 <input
                                                     type="text"
@@ -706,7 +757,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.bankAccountNo}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('bankAccountNo')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all ${!isFieldValid('bankAccountNo') && touched.bankAccountNo
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -720,7 +770,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
 
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                    IFSC Code <span className="text-red-500">*</span>
+                                                    IFSC Code
                                                 </label>
                                                 <input
                                                     type="text"
@@ -728,7 +778,6 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                                     value={formData.ifscCode}
                                                     onChange={handleChange}
                                                     onBlur={() => handleBlur('ifscCode')}
-                                                    required
                                                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:outline-none transition-all uppercase ${!isFieldValid('ifscCode') && touched.ifscCode
                                                             ? 'border-red-300 focus:ring-red-500'
                                                             : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
@@ -752,7 +801,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 <div className="border-t bg-gray-50 px-6 py-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2 text-sm text-gray-600">
-                            <span className="font-medium">All fields are required</span>
+                            <span className="font-medium">Only Customer Name is required</span>
                             <span className="text-red-500">*</span>
                         </div>
                         <div className="flex space-x-3">
@@ -775,7 +824,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                             >
                                 Cancel
                             </button>
-                            {activeSection !== 'banking' ? (
+                            {activeSection !== 'banking' && activeSection !== 'share' ? (
                                 <button
                                     type="button"
                                     onClick={handleNext}
@@ -789,7 +838,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => handleSubmit()}
-                                    disabled={loading || !isBankingSectionValid}
+                                    disabled={loading || !formData.customerName?.trim()}
                                     className={`flex items-center space-x-2 px-6 py-2.5 ${themeColors.primary} text-white rounded-lg font-medium ${themeColors.primaryHover} disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg`}
                                 >
                                     {loading ? (

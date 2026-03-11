@@ -6,31 +6,40 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Printer, Download } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDateFormat } from '../hooks/useDateFormat';
 
 interface InvoicePreviewProps {
   customer: Customer | null;
   items: InvoiceItem[];
-  dueDate: string;
+  invoiceDate: string;
   invoiceNumber: string;
   paymentStatus?: string;
   initialPayment?: number; // This is actually paidAmount from invoice
   waveAmount?: number; // Wave amount from invoice
   payments?: Payment[]; // Payments array for reference
+  /** When viewing another user's invoice (e.g. admin views user's invoice), pass the invoice creator's company info */
+  companyInfo?: CompanyInfo | null;
+  /** When true, never fall back to logged-in user's profile - use only companyInfo */
+  forceUseCompanyInfo?: boolean;
 }
 
 export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
   customer,
   items,
-  dueDate: _dueDate,
+  invoiceDate: invoiceDateProp,
   invoiceNumber,
   paymentStatus: _paymentStatus = 'Unpaid',
   initialPayment = 0, // This is paidAmount
   waveAmount = 0, // This is waveAmount from invoice
   payments: _payments = [], // For future use if needed
+  companyInfo: companyInfoProp,
+  forceUseCompanyInfo = false,
 }) => {
   const { themeColors } = useTheme();
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
-  const invoiceDate = new Date().toISOString().split('T')[0];
+  const formatDate = useDateFormat();
+  const [companyInfoFromApi, setCompanyInfoFromApi] = useState<CompanyInfo | null>(null);
+  const companyInfo = companyInfoProp ?? (forceUseCompanyInfo ? null : companyInfoFromApi);
+  const invoiceDate = invoiceDateProp || new Date().toISOString().split('T')[0];
   const invoiceRef = useRef<HTMLDivElement>(null);
   const toWords = new ToWords({
     localeCode: 'en-IN',
@@ -52,8 +61,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     },
   });
   useEffect(() => {
-    loadCompanyInfo();
-  }, []);
+    if (!companyInfoProp && !forceUseCompanyInfo) loadCompanyInfo();
+  }, [companyInfoProp, forceUseCompanyInfo]);
 
   const loadCompanyInfo = async () => {
     try {
@@ -136,10 +145,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         logoUrl: logoUrl,
       };
 
-      setCompanyInfo(companyData);
+      setCompanyInfoFromApi(companyData);
     } catch (error) {
       console.error('Failed to load company info:', error);
-      setCompanyInfo({
+      setCompanyInfoFromApi({
         name: 'LEAP NEXT',
         businessName: 'LEAP NEXT',
         address: 'Remula Gulmolar Phase 2, Behind City One Mall E Wing Hit No 002, Morwadi, Pune, Maharashtra 411017',
@@ -226,7 +235,8 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                 print-color-adjust: exact;
                 font-size: 9px !important;
               }
-              h1, h2, h3 {
+              /* Scope font-size overrides to table only - preserve user font sizes in .header-logo and .invoice-address */
+              .invoice-table h1, .invoice-table h2, .invoice-table h3 {
                 font-size: 12px !important;
               }
               .invoice-header {
@@ -260,7 +270,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               tbody tr:last-child {
                 height: auto;
               }
-              .text-xs, .text-sm {
+              .invoice-table .text-xs, .invoice-table .text-sm {
                 font-size: 9px !important;
               }
               .invoice-signature {
@@ -1058,7 +1068,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           <div className="flex flex-col w-full sm:w-[50%] border-b-2 border-b-[#505050] pb-2">
             <h1 className="py-2 mb-2 text-lg sm:text-xl md:text-2xl"><strong>Invoice</strong></h1>
             <p className="text-xs sm:text-sm"><strong>Invoice No:  </strong> {invoiceNumber}</p>
-            <p className="mb-2 text-xs sm:text-sm"><strong>Invoice Date:</strong> {invoiceDate}</p>
+            <p className="mb-2 text-xs sm:text-sm"><strong>Invoice Date:</strong> {formatDate(invoiceDate)}</p>
           </div>
           <div className="invoice-logo w-full sm:w-[50%] flex items-center justify-center border-b-[#505050] border-b-2 overflow-hidden bg-gray-600 min-h-[15vh]">
             {currentCompany.logoUrl && currentCompany.logoUrl.trim() !== '' ? (

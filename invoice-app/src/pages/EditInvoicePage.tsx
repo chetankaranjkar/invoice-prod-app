@@ -6,7 +6,7 @@ import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvo
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import { api } from '../services/agent';
 import type { Customer, UpdateInvoiceDto, InvoiceItem, PaymentStatus, Invoice, InvoiceLayoutConfigDto } from '../types';
-import { calculateGST } from '../utils/helpers';
+import { calculateGST, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
 
 export const EditInvoicePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -15,7 +15,7 @@ export const EditInvoicePage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
-  const [dueDate, setDueDate] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Unpaid');
   const [initialPayment, setInitialPayment] = useState<number>(0);
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -69,7 +69,7 @@ export const EditInvoicePage: React.FC = () => {
 
       setInvoice(invoiceData);
       setInvoiceNumber(invoiceData.invoiceNumber);
-      setDueDate(invoiceData.dueDate ? new Date(invoiceData.dueDate).toISOString().split('T')[0] : '');
+      setInvoiceDate(invoiceData.invoiceDate ? new Date(invoiceData.invoiceDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
       setPaymentStatus(invoiceData.status as PaymentStatus);
       setInitialPayment(invoiceData.paidAmount || 0);
 
@@ -138,7 +138,7 @@ export const EditInvoicePage: React.FC = () => {
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Failed to update invoice:', error);
-      alert(`Failed to update invoice: ${error.response?.data?.message || 'Please try again.'}`);
+      alert(`Failed to update invoice: ${getApiErrorMessage(error, 'Please try again.')}`);
     }
   };
 
@@ -240,8 +240,11 @@ export const EditInvoicePage: React.FC = () => {
               handleSelectedCustomer={handleSelectedCustomer}
               items={items}
               setItems={setItems}
-              dueDate={dueDate}
-              setDueDate={setDueDate}
+              invoicePrefix=""
+              invoiceNumberNumeric={0}
+              setInvoiceNumberNumeric={() => {}}
+              invoiceDate={invoiceDate}
+              setInvoiceDate={setInvoiceDate}
               paymentStatus={paymentStatus}
               setPaymentStatus={setPaymentStatus}
               initialPayment={initialPayment}
@@ -280,29 +283,32 @@ export const EditInvoicePage: React.FC = () => {
                 <TaxInvoice
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
+                  invoiceDate={invoiceDate}
                   invoiceNumber={invoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={invoice?.sellerInfo ? sellerInfoToCompanyInfo(invoice.sellerInfo) : undefined}
                 />
               ) : selectedLayoutId === 'classic' || !selectedLayout || !hasVisibleSections ? (
                 <InvoicePreview
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
+                  invoiceDate={invoiceDate}
                   invoiceNumber={invoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={invoice?.sellerInfo ? sellerInfoToCompanyInfo(invoice.sellerInfo) : undefined}
                 />
               ) : (
                 <DynamicInvoiceRenderer
                   layout={resolvedLayoutConfig}
                   customer={selectedCustomer}
                   items={invoiceItems}
-                  dueDate={dueDate}
+                  invoiceDate={invoiceDate}
                   invoiceNumber={invoiceNumber}
                   paymentStatus={paymentStatus}
                   initialPayment={initialPayment}
+                  companyInfo={invoice?.sellerInfo ? sellerInfoToCompanyInfo(invoice.sellerInfo) : undefined}
                 />
               )}
             </div>
