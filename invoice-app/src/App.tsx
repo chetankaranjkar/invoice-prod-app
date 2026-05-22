@@ -18,10 +18,10 @@ import { SidebarProvider, useSidebar } from './contexts/SidebarContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { SimpleIdleWarning } from './components/SimpleIdleWarning';
 
-// Main App component
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     setIsAuthenticated(!!localStorage.getItem('authToken'));
     setLoading(false);
@@ -38,8 +38,11 @@ function App() {
     <ThemeProvider>
       <SidebarProvider>
         {loading ? (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-violet-600"></div>
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-10 w-10 rounded-full border-[3px] border-slate-200 border-t-indigo-500 animate-spin" />
+              <p className="text-sm text-slate-500">Loading…</p>
+            </div>
           </div>
         ) : !isAuthenticated ? (
           <LoginPage onLoginSuccess={handleLoginSuccess} />
@@ -59,32 +62,35 @@ function AppContent({ onLogout }: { onLogout: () => void }) {
   const { isCollapsed } = useSidebar();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navigation onLogout={onLogout} />
-      <main 
-        className="transition-all duration-300 pt-16 lg:pt-0 min-h-screen p-3 sm:p-4 lg:p-6"
-        style={{ marginRight: isCollapsed ? '64px' : '256px' }}
+      <main
+        className={
+          'transition-[margin] duration-300 pt-14 lg:pt-0 min-h-screen ' +
+          (isCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[260px]')
+        }
       >
         <SimpleIdleWarning />
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/invoices" element={<InvoiceCreationPage />} />
-          <Route path="/invoices/edit/:id" element={<EditInvoicePage />} />
-          {/* MasterUser will be redirected or see access denied message in InvoiceCreationPage */}
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/customers/paid" element={<CustomersPage filter="paid" />} />
-          <Route path="/customers/unpaid" element={<CustomersPage filter="unpaid" />} />
-          <Route path="/customers/:customerId" element={<CustomersPage />} />
-          <Route path="/users" element={<UserManagementPage />} />
-          <Route path="/audit-logs" element={<AuditLogPage />} />
-          <Route path="/backup" element={<BackupPage />} />
-          <Route path="/error-logs" element={<ErrorLogPage />} />
-          <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/invoice-layouts" element={<InvoiceLayoutDesignerPage />} />
-        </Routes>
+        <div className="px-3 sm:px-5 lg:px-8 py-4 sm:py-6">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/invoices" element={<InvoiceCreationPage />} />
+            <Route path="/invoices/edit/:id" element={<EditInvoicePage />} />
+            <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/customers/paid" element={<CustomersPage filter="paid" />} />
+            <Route path="/customers/unpaid" element={<CustomersPage filter="unpaid" />} />
+            <Route path="/customers/:customerId" element={<CustomersPage />} />
+            <Route path="/users" element={<UserManagementPage />} />
+            <Route path="/audit-logs" element={<AuditLogPage />} />
+            <Route path="/backup" element={<BackupPage />} />
+            <Route path="/error-logs" element={<ErrorLogPage />} />
+            <Route path="/recurring-invoices" element={<RecurringInvoicesPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/invoice-layouts" element={<InvoiceLayoutDesignerPage />} />
+          </Routes>
+        </div>
       </main>
     </div>
   );

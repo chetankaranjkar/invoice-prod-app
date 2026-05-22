@@ -1,111 +1,544 @@
 @import "tailwindcss";
 
-/* Hostania Font */
+/* ============================================================
+ * Design System — Modern SaaS Dashboard
+ * Tailwind v4 with CSS variables (shadcn/ui style)
+ * ============================================================ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Light theme — modern SaaS palette (default = indigo/violet) */
+  --background: #f8fafc;          /* slate-50 */
+  --foreground: #0f172a;          /* slate-900 */
+
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  --primary: #6366f1;             /* indigo-500 */
+  --primary-foreground: #ffffff;
+  --primary-soft: #eef2ff;        /* indigo-50 */
+
+  --secondary: #f1f5f9;           /* slate-100 */
+  --secondary-foreground: #0f172a;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;    /* slate-500 */
+
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+
+  --destructive: #ef4444;         /* red-500 */
+  --destructive-foreground: #ffffff;
+
+  --success: #10b981;             /* emerald-500 */
+  --success-foreground: #ffffff;
+
+  --warning: #f59e0b;             /* amber-500 */
+  --warning-foreground: #ffffff;
+
+  --info: #3b82f6;                /* blue-500 */
+  --info-foreground: #ffffff;
+
+  --border: #e2e8f0;              /* slate-200 */
+  --input: #e2e8f0;
+  --ring: #6366f1;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-border: #e2e8f0;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+
+  --radius: 0.625rem;             /* 10px — modern rounded */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 32px -8px rgb(15 23 42 / 0.12), 0 4px 8px -4px rgb(15 23 42 / 0.06);
+}
+
+/* Theme variants — switched via [data-theme] on <html> */
+[data-theme="violet"] {
+  --primary: #7c3aed;
+  --primary-soft: #f5f3ff;
+  --ring: #7c3aed;
+}
+[data-theme="navy"] {
+  --primary: #1e3a8a;
+  --primary-soft: #eff6ff;
+  --ring: #1e3a8a;
+}
+[data-theme="green"] {
+  --primary: #059669;
+  --primary-soft: #ecfdf5;
+  --ring: #059669;
+}
+
+/* ============================================================
+ * Base styling
+ * ============================================================ */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--background);
+  color: var(--foreground);
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom scrollbar */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: none;
+}
+
+/* Selection */
+::selection {
+  background: color-mix(in oklab, var(--primary) 25%, transparent);
+}
+
+/* ============================================================
+ * Reusable component classes (shadcn-flavoured)
+ * ============================================================ */
+
+@layer components {
+  /* Cards */
+  .ui-card {
+    @apply bg-white border border-slate-200 rounded-xl shadow-[0_1px_2px_0_rgba(15,23,42,0.04)];
+  }
+
+  .ui-card-hover {
+    @apply transition-all duration-200 hover:shadow-[0_4px_16px_-4px_rgba(15,23,42,0.08)] hover:-translate-y-0.5;
+  }
+
+  /* Buttons — variants inline base utilities (Tailwind v4 @apply cannot reference .ui-btn) */
+  .ui-btn {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+
+  .ui-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+      h-10 px-4 text-white shadow-sm;
+    background: var(--primary);
+  }
+  .ui-btn-primary:hover {
+    background: color-mix(in oklab, var(--primary) 88%, black);
+  }
+  .ui-btn-primary:focus-visible {
+    box-shadow: 0 0 0 2px white, 0 0 0 4px var(--ring);
+  }
+
+  .ui-btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+      h-10 px-4 bg-white text-slate-900 border border-slate-200 shadow-sm;
+  }
+  .ui-btn-secondary:hover {
+    @apply bg-slate-50;
+  }
+
+  .ui-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+      h-10 px-3 text-slate-700 hover:bg-slate-100;
+  }
+
+  .ui-btn-danger {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+      h-10 px-4 bg-red-500 text-white shadow-sm hover:bg-red-600;
+  }
+
+  .ui-btn-success {
+    @apply inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium
+      transition-all duration-150 disabled:pointer-events-none disabled:opacity-50
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white
+      h-10 px-4 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700;
+  }
+
+  .ui-btn-sm  { @apply h-8 px-3 text-xs; }
+  .ui-btn-icon { @apply h-9 w-9 p-0; }
+
+  /* Inputs */
+  .ui-input {
+    @apply flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900
+      placeholder:text-slate-400
+      transition-colors
+      focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .ui-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+  }
+
+  .ui-textarea {
+    @apply flex min-h-[80px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900
+      placeholder:text-slate-400
+      transition-colors
+      focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+      disabled:cursor-not-allowed disabled:opacity-50
+      leading-6 resize-y;
+  }
+  .ui-textarea:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+  }
+
+  .ui-select {
+    @apply flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900
+      placeholder:text-slate-400
+      transition-colors
+      focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+      disabled:cursor-not-allowed disabled:opacity-50
+      pr-9 appearance-none cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+  .ui-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 20%, transparent);
+  }
+
+  .ui-label {
+    @apply block text-sm font-medium text-slate-700 mb-1.5;
+  }
+
+  /* Badges */
+  .ui-badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .ui-badge-success {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+      bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200;
+  }
+  .ui-badge-warning {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+      bg-amber-50 text-amber-700 ring-1 ring-amber-200;
+  }
+  .ui-badge-danger {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+      bg-red-50 text-red-700 ring-1 ring-red-200;
+  }
+  .ui-badge-info {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+      bg-blue-50 text-blue-700 ring-1 ring-blue-200;
+  }
+  .ui-badge-neutral {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+      bg-slate-100 text-slate-700 ring-1 ring-slate-200;
+  }
+
+  /* Tables */
+  .ui-table {
+    @apply w-full text-sm;
+  }
+  .ui-table thead {
+    @apply text-xs uppercase tracking-wider text-slate-500;
+  }
+  .ui-table thead th {
+    @apply px-4 py-3 text-left font-semibold border-b border-slate-200 bg-slate-50/60;
+  }
+  .ui-table tbody td {
+    @apply px-4 py-3 border-b border-slate-100 text-slate-700;
+  }
+  .ui-table tbody tr {
+    @apply transition-colors hover:bg-slate-50/60;
+  }
+  .ui-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* Modal */
+  .ui-modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+    animation: ui-fade-in 0.15s ease-out;
+  }
+  .ui-modal {
+    @apply bg-white rounded-2xl shadow-2xl w-full max-h-[95vh] overflow-hidden flex flex-col;
+    animation: ui-scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ui-modal-header {
+    @apply flex items-center justify-between px-6 py-4 border-b border-slate-200;
+  }
+  .ui-modal-body {
+    @apply px-6 py-5 overflow-y-auto;
+  }
+  .ui-modal-footer {
+    @apply flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 bg-slate-50/60;
+  }
+
+  /* Sections / Page header */
+  .page-header {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6;
+  }
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-slate-900;
+  }
+  .page-subtitle {
+    @apply text-sm text-slate-500 mt-1;
+  }
+
+  /* Stat card */
+  .stat-card {
+    @apply bg-white border border-slate-200 rounded-xl shadow-[0_1px_2px_0_rgba(15,23,42,0.04)]
+      p-5 transition-all duration-200;
+  }
+  .stat-card-clickable {
+    @apply cursor-pointer hover:shadow-[0_8px_24px_-8px_rgba(15,23,42,0.12)] hover:-translate-y-0.5 hover:border-slate-300;
+  }
+}
+
+/* Animations */
+@keyframes ui-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ui-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes ui-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in  { animation: ui-fade-in 0.2s ease-out; }
+.animate-scale-in { animation: ui-scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-slide-up { animation: ui-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ============================================================
+ * Hostania Font (preserved from original — used on invoice docs)
+ * ============================================================ */
 @font-face {
-    font-family: 'Hostania';
-    src: url('/fonts/Hostania.woff2') format('woff2'),
-        url('/fonts/Hostania.woff') format('woff'),
-        url('/fonts/Hostania.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-    font-display: swap;
+  font-family: 'Hostania';
+  src: url('/fonts/Hostania.woff2') format('woff2'),
+       url('/fonts/Hostania.woff') format('woff'),
+       url('/fonts/Hostania.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
 }
 
 .font-hostania {
-    font-family: 'Hostania', serif;
+  font-family: 'Hostania', serif;
 }
 
+/* ============================================================
+ * Print / PDF (preserved invoice-export rules)
+ * ============================================================ */
 @media print {
-    .invoice-header {
-        padding-top: 0 !important;
-    }
+  @page { size: A4; margin: 8mm; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
-    .invoice-header h1 {
-        margin: 0 0 4px 0 !important;
-        padding: 0 !important;
-    }
+  /* Hide app chrome */
+  aside, nav, .print\:hidden { display: none !important; }
 
-    .invoice-logo {
-        min-height: 0 !important;
-        height: 35mm !important;
-        align-items: flex-start !important;
-    }
+  .invoice-header { padding-top: 0 !important; }
+  .invoice-header h1 { margin: 0 0 4px 0 !important; padding: 0 !important; }
+  .invoice-logo { min-height: 0 !important; height: 35mm !important; align-items: flex-start !important; }
+  .invoice-table { height: auto !important; min-height: 0 !important; }
+  .invoice-table tbody { min-height: 0 !important; height: auto !important; }
+  .invoice-table tbody tr { height: auto !important; page-break-inside: avoid; break-inside: avoid; }
+  .invoice-signature { margin-bottom: 4mm !important; page-break-inside: avoid; break-inside: avoid; }
+  .invoice-empty-row { height: 12mm !important; }
 
-    .invoice-table {
-        min-height: 30vh !important;
-        height: auto !important;
-        margin-left: 0.5vw !important;
-        margin-right: 0.5vw !important;
-        width: calc(100% - 1vw) !important;
-    }
+  /* Static invoice: compact for one-page A4 fit */
+  .static-invoice {
+    padding: 4mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+  .static-invoice .static-invoice-accent { height: 2px !important; margin: 0 0 2mm 0 !important; }
+  .static-invoice header, .static-invoice .secondrow { margin-bottom: 2mm !important; gap: 4mm !important; }
+  .static-invoice .header-logo,
+  .static-invoice .invoice-address,
+  .static-invoice .invoice-to,
+  .static-invoice .invoice-details { padding: 2mm !important; }
+  .static-invoice .invoice-table th,
+  .static-invoice .invoice-table td { padding: 1mm 2mm !important; line-height: 1.2 !important; }
+  .static-invoice .mt-6 { margin-top: 3mm !important; }
+  .static-invoice .mt-8 { margin-top: 4mm !important; }
+  .static-invoice .mb-4, .static-invoice .mb-5, .static-invoice .mb-6 { margin-bottom: 2mm !important; }
+  .static-invoice h1 { font-size: 16px !important; }
 
-    .invoice-table tbody {
-        min-height: 0 !important;
-        height: auto !important;
-    }
-
-    .invoice-table tbody tr {
-        height: auto !important;
-    }
-
-    .invoice-signature {
-        margin-bottom: 6mm !important;
-    }
+  /* Static invoice v2 (modern layout): same compact A4 rules */
+  .static-invoice-v2 {
+    padding: 4mm !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+  .static-invoice-v2 .static-invoice-v2-accent { height: 2px !important; margin: 0 0 2mm 0 !important; }
+  .static-invoice-v2 header, .static-invoice-v2 .secondrow { margin-bottom: 2mm !important; gap: 4mm !important; }
+  .static-invoice-v2 .header-logo,
+  .static-invoice-v2 .invoice-address,
+  .static-invoice-v2 .invoice-to,
+  .static-invoice-v2 .invoice-details { padding: 2mm !important; }
+  .static-invoice-v2 .invoice-table th,
+  .static-invoice-v2 .invoice-table td { padding: 1mm 2mm !important; line-height: 1.2 !important; }
+  .static-invoice-v2 .mt-6 { margin-top: 3mm !important; }
+  .static-invoice-v2 .mt-8 { margin-top: 4mm !important; }
+  .static-invoice-v2 .mb-4, .static-invoice-v2 .mb-5, .static-invoice-v2 .mb-6 { margin-bottom: 2mm !important; }
+  .static-invoice-v2 h1 { font-size: 16px !important; }
 }
 
-.pdf-export .invoice-header {
-    padding-top: 0 !important;
-}
-
-.pdf-export .invoice-header h1 {
-    margin: 0 0 4px 0 !important;
-    padding: 0 !important;
-}
-
-.pdf-export .invoice-logo {
-    min-height: 0 !important;
-    height: 30mm !important;
-    align-items: flex-start !important;
-}
-
+.pdf-export .invoice-header { padding-top: 0 !important; }
+.pdf-export .invoice-header h1 { margin: 0 0 4px 0 !important; padding: 0 !important; }
+.pdf-export .invoice-logo { min-height: 0 !important; height: 30mm !important; align-items: flex-start !important; }
 .pdf-export .invoice-table {
-    min-height: 30vh !important;
-    height: auto !important;
-    margin-left: 0.5vw !important;
-    margin-right: 0.5vw !important;
-    width: calc(100% - 1vw) !important;
+  height: auto !important; min-height: 0 !important;
+  margin-left: 0 !important; margin-right: 0 !important;
+  width: 100% !important;
 }
-
-.pdf-export .invoice-table tbody {
-    min-height: 0 !important;
-    height: auto !important;
-    width: calc(100% - 1vw) !important;
-}
-
-.pdf-export .invoice-table tbody tr {
-    height: auto !important;
-}
-
+.pdf-export .invoice-table tbody { min-height: 0 !important; height: auto !important; width: 100% !important; }
+.pdf-export .invoice-table tbody tr { height: auto !important; }
 .pdf-export .invoice-table th,
-.pdf-export .invoice-table td {
-    vertical-align: middle !important;
-}
-
+.pdf-export .invoice-table td { vertical-align: middle !important; }
 .pdf-export .invoice-table thead th {
-    padding-top: 0.5mm !important;
-    padding-bottom: 1.5mm !important;
-    line-height: 1.2 !important;
-    height: 8mm !important;
+  padding-top: 0.5mm !important; padding-bottom: 1.5mm !important;
+  line-height: 1.2 !important; height: 8mm !important;
 }
+.pdf-export .invoice-footer { margin-top: 6px !important; }
+.pdf-export .amount-in-words hr { margin: 6px 0 !important; }
+.pdf-export .invoice-signature { margin-bottom: 4mm !important; }
+.pdf-export .invoice-empty-row { height: 12mm !important; }
 
-.pdf-export .invoice-footer {
-    margin-top: 6px !important;
+/* Static invoice: compact for one-page A4 PDF export */
+.pdf-export .static-invoice {
+  padding: 4mm !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
 }
+.pdf-export .static-invoice .static-invoice-accent { height: 2px !important; margin: 0 0 2mm 0 !important; }
+.pdf-export .static-invoice header, 
+.pdf-export .static-invoice .secondrow { margin-bottom: 2mm !important; gap: 4mm !important; }
+.pdf-export .static-invoice .header-logo,
+.pdf-export .static-invoice .invoice-address,
+.pdf-export .static-invoice .invoice-to,
+.pdf-export .static-invoice .invoice-details { padding: 2mm !important; }
+.pdf-export .static-invoice .invoice-table th,
+.pdf-export .static-invoice .invoice-table td { padding: 1mm 2mm !important; line-height: 1.2 !important; }
+.pdf-export .static-invoice .mt-6 { margin-top: 3mm !important; }
+.pdf-export .static-invoice .mt-8 { margin-top: 4mm !important; }
+.pdf-export .static-invoice .mb-4, 
+.pdf-export .static-invoice .mb-5, 
+.pdf-export .static-invoice .mb-6 { margin-bottom: 2mm !important; }
+.pdf-export .static-invoice h1 { font-size: 16px !important; }
 
-.pdf-export .amount-in-words hr {
-    margin: 6px 0 !important;
+.pdf-export .static-invoice-v2 {
+  padding: 4mm !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
 }
-
-.pdf-export .invoice-signature {
-    margin-bottom: 6mm !important;
-}
+.pdf-export .static-invoice-v2 .static-invoice-v2-accent { height: 2px !important; margin: 0 0 2mm 0 !important; }
+.pdf-export .static-invoice-v2 header,
+.pdf-export .static-invoice-v2 .secondrow { margin-bottom: 2mm !important; gap: 4mm !important; }
+.pdf-export .static-invoice-v2 .header-logo,
+.pdf-export .static-invoice-v2 .invoice-address,
+.pdf-export .static-invoice-v2 .invoice-to,
+.pdf-export .static-invoice-v2 .invoice-details { padding: 2mm !important; }
+.pdf-export .static-invoice-v2 .invoice-table th,
+.pdf-export .static-invoice-v2 .invoice-table td { padding: 1mm 2mm !important; line-height: 1.2 !important; }
+.pdf-export .static-invoice-v2 .mt-6 { margin-top: 3mm !important; }
+.pdf-export .static-invoice-v2 .mt-8 { margin-top: 4mm !important; }
+.pdf-export .static-invoice-v2 .mb-4,
+.pdf-export .static-invoice-v2 .mb-5,
+.pdf-export .static-invoice-v2 .mb-6 { margin-bottom: 2mm !important; }
+.pdf-export .static-invoice-v2 h1 { font-size: 16px !important; }

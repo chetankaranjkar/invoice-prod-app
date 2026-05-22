@@ -124,6 +124,9 @@ namespace InvoiceApp.Infrastructure.Services
             if (updateDto.DisableQuantity.HasValue)
                 user.DisableQuantity = updateDto.DisableQuantity.Value;
 
+            if (updateDto.IncludeSignatureOnInvoice.HasValue)
+                user.IncludeSignatureOnInvoice = updateDto.IncludeSignatureOnInvoice.Value;
+
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -176,6 +179,42 @@ namespace InvoiceApp.Infrastructure.Services
             await _context.SaveChangesAsync();
 
             return user.LogoUrl;
+        }
+
+        public async Task<string?> UploadSignatureAsync(Guid userId, IFormFile signatureFile)
+        {
+            if (signatureFile == null || signatureFile.Length == 0)
+                return null;
+
+            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+            var extension = Path.GetExtension(signatureFile.FileName).ToLowerInvariant();
+            if (string.IsNullOrEmpty(extension) || !allowedExtensions.Contains(extension))
+                throw new ArgumentException("Invalid file type. Only image files are allowed.");
+
+            // Validate file size (max 1MB - signatures should be small)
+            if (signatureFile.Length > 1 * 1024 * 1024)
+                throw new ArgumentException("File size too large. Maximum size is 1MB.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null) return null;
+
+            var uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "signatures");
+            if (!Directory.Exists(uploadsDir))
+                Directory.CreateDirectory(uploadsDir);
+
+            var fileName = $"{userId}_{Guid.NewGuid()}{extension}";
+            var filePath = Path.Combine(uploadsDir, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await signatureFile.CopyToAsync(stream);
+            }
+
+            user.SignatureUrl = $"/uploads/signatures/{fileName}";
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return user.SignatureUrl;
         }
     }
 }

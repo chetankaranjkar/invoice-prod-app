@@ -8,6 +8,7 @@ import { InvoiceFormTaxableDetails } from './InvoiceFormTaxableDetails.tsx';
 import { calculateGST, getFinancialYearString, parseLocalDate } from '../utils/helpers';
 import { AddCustomerModal } from './AddCustomerModal';
 import { ProductAutocomplete } from './ProductAutocomplete';
+import { DateInput } from './dates';
 import { InvoiceTemplateModal } from './InvoiceTemplateModal';
 import { ToWords } from 'to-words';
 
@@ -380,11 +381,10 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Invoice Date
             </label>
-            <input
-              type="date"
+            <DateInput
               value={invoiceDate}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInvoiceDate(e.target.value)}
-              aria-label="Invoice date"
+              onChange={(iso) => setInvoiceDate(iso)}
+              ariaLabel="Invoice date"
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -522,9 +522,9 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
 
             <div className={`space-y-2 ${selectedCustomer === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
               {items.map((item, index) => (
-                <div key={index} className="border rounded-md p-2 sm:p-3">
+                  <div key={index} className="min-w-0 w-full overflow-visible border rounded-md p-2 sm:p-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-3 items-end">
-                    <div className="sm:col-span-2 lg:col-span-3">
+                    <div className="sm:col-span-2 lg:col-span-3 min-w-0 w-full">
                       <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Product Name *
                       </label>

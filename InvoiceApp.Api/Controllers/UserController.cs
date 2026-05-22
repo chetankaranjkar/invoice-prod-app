@@ -118,6 +118,36 @@ namespace InvoiceApp.Api.Controllers
             }
         }
 
+        [HttpPost("upload-signature")]
+        public async Task<ActionResult<object>> UploadSignature(IFormFile signature)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                _logger.LogInformation("UploadSignature called for user: {UserId}", userId);
+
+                if (userId == null)
+                    return Unauthorized("User ID not found in token");
+
+                if (signature == null || signature.Length == 0)
+                    return BadRequest(new { message = "No signature file provided" });
+
+                var signatureUrl = await _userService.UploadSignatureAsync(userId.Value, signature);
+                if (signatureUrl == null) return BadRequest(new { message = "Failed to upload signature" });
+
+                return Ok(new { signatureUrl });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in UploadSignature");
+                return StatusCode(500, new { message = "An error occurred while uploading the signature" });
+            }
+        }
+
         [HttpPost("profile-with-logo")]
         public async Task<ActionResult<UserProfileDto>> UpdateProfileWithLogo([FromForm] UpdateUserProfileDto updateDto, IFormFile? logo)
         {

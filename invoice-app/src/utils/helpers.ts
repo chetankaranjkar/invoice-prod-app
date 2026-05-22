@@ -61,6 +61,12 @@ export const sellerInfoToCompanyInfo = (s: SellerInfoRaw): CompanyInfo => ({
   Zip: get(s, 'zip', 'Zip'),
   phone: get(s, 'phone', 'Phone'),
   logoUrl: get(s, 'logoUrl', 'LogoUrl'),
+  signatureUrl: get(s, 'signatureUrl', 'SignatureUrl'),
+  includeSignatureOnInvoice: ((): boolean | undefined => {
+    const v = (s as Record<string, unknown>)['includeSignatureOnInvoice'] ?? (s as Record<string, unknown>)['IncludeSignatureOnInvoice'];
+    if (v == null) return undefined;
+    return v === true || v === 'true' || v === 1;
+  })(),
   headerLogoBgColor: get(s, 'headerLogoBgColor', 'HeaderLogoBgColor'),
   addressSectionBgColor: get(s, 'addressSectionBgColor', 'AddressSectionBgColor'),
   headerLogoTextColor: get(s, 'headerLogoTextColor', 'HeaderLogoTextColor'),
@@ -71,6 +77,32 @@ export const sellerInfoToCompanyInfo = (s: SellerInfoRaw): CompanyInfo => ({
   gpayNumber: get(s, 'gpayNumber', 'GpayNumber'),
   taxPractitionerTitle: get(s, 'taxPractitionerTitle', 'TaxPractitionerTitle'),
 });
+
+/** Resolve a stored asset URL (e.g. /uploads/signatures/xyz.png) into a full URL the browser can load.
+ *  Mirrors the rules used for logos in InvoicePreview/UserProfileModal so signatures load in dev and Docker. */
+export const resolveAssetUrl = (url?: string | null): string => {
+  if (!url || !url.trim()) return '';
+  let u = url.trim();
+
+  if (u.startsWith('data:') || u.startsWith('blob:')) return u;
+
+  // Fix legacy HTTPS localhost URLs
+  if (u.includes('https://localhost:7001')) u = u.replace('https://localhost:7001', 'http://localhost:5001');
+  else if (u.includes('https://localhost')) u = u.replace('https://localhost', 'http://localhost:5001');
+
+  if (u.startsWith('http://') || u.startsWith('https://')) return u;
+
+  // /uploads/* always served directly by API
+  if (u.startsWith('/uploads/')) return `http://localhost:5001${u}`;
+
+  const apiBaseUrl = (import.meta as { env?: Record<string, string> })?.env?.VITE_API_URL || '';
+  const isDockerMode = apiBaseUrl.startsWith('/');
+  const baseUrl = isDockerMode
+    ? 'http://localhost:5001'
+    : (apiBaseUrl || 'http://localhost:5001');
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  return u.startsWith('/') ? `${cleanBase}${u}` : `${cleanBase}/${u}`;
+};
 
 /** Default: 12px. Use custom only when useDefaultInvoiceFontSizes is explicitly false. */
 export const getEffectiveHeaderFontSize = (company: { useDefaultInvoiceFontSizes?: boolean; invoiceHeaderFontSize?: number } | null): number => {
@@ -92,6 +124,114 @@ export const formatCurrency = (amount: number): string => {
 };
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const MONTH_LOOKUP: Record<string, number> = MONTH_NAMES.reduce<Record<string, number>>((acc, name, i) => {
+  acc[name.toLowerCase()] = i + 1;
+  acc[name.slice(0, 3).toLowerCase()] = i + 1;
+  return acc;
+}, {});
+
+/** YYYY-MM-DD or null when invalid calendar date */
+function validateYearMonthDay(y: number, m: number, d: number): string | null {
+  if (
+    Number.isNaN(y) ||
+    Number.isNaN(m) ||
+    Number.isNaN(d) ||
+    y < 1000 ||
+    y > 9999 ||
+    m < 1 ||
+    m > 12 ||
+    d < 1 ||
+    d > 31
+  ) {
+    return null;
+  }
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    return null;
+  }
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/**
+ * Parses a user-entered date string according to profile format (ISO YYYY-MM-DD is always accepted).
+ * Returns canonical YYYY-MM-DD for APIs and storage.
+ */
+export const parseDateWithPreference = (s: string, format?: string | null): string | null => {
+  const t = s.trim();
+  if (!t) return null;
+
+  const isoMatch = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10);
+    const d = parseInt(isoMatch[3], 10);
+    return validateYearMonthDay(y, m, d);
+  }
+
+  const f = format || 'DD/MM/YYYY';
+  switch (f) {
+    case 'YYYY-MM-DD': {
+      const m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+    }
+    case 'DD/MM/YYYY': {
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[3], 10), parseInt(m[2], 10), parseInt(m[1], 10));
+    }
+    case 'MM/DD/YYYY': {
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[3], 10), parseInt(m[1], 10), parseInt(m[2], 10));
+    }
+    case 'DD-MM-YYYY': {
+      const m = t.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[3], 10), parseInt(m[2], 10), parseInt(m[1], 10));
+    }
+    case 'MM-DD-YYYY': {
+      const m = t.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[3], 10), parseInt(m[1], 10), parseInt(m[2], 10));
+    }
+    case 'DD-MMM-yyyy': {
+      const m = t.match(/^(\d{1,2})-([A-Za-z]+)-(\d{4})$/);
+      if (!m) return null;
+      const day = parseInt(m[1], 10);
+      const monthKey = m[2].slice(0, 3).toLowerCase();
+      const mo = MONTH_LOOKUP[monthKey];
+      if (!mo) return null;
+      const y = parseInt(m[3], 10);
+      return validateYearMonthDay(y, mo, day);
+    }
+    default: {
+      const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return null;
+      return validateYearMonthDay(parseInt(m[3], 10), parseInt(m[2], 10), parseInt(m[1], 10));
+    }
+  }
+};
+
+/** Hint text matching profile date format picker (invoice forms, placeholders). */
+export const dateFormatExampleHint = (format?: string | null): string => {
+  switch (format || 'DD/MM/YYYY') {
+    case 'MM/DD/YYYY':
+      return 'MM/DD/YYYY (e.g. 03/15/2024)';
+    case 'YYYY-MM-DD':
+      return 'YYYY-MM-DD (e.g. 2024-03-15)';
+    case 'DD-MM-YYYY':
+      return 'DD-MM-YYYY (e.g. 15-03-2024)';
+    case 'MM-DD-YYYY':
+      return 'MM-DD-YYYY (e.g. 03-15-2024)';
+    case 'DD-MMM-yyyy':
+      return 'DD-MMM-yyyy (e.g. 15-Mar-2024)';
+    case 'DD/MM/YYYY':
+    default:
+      return 'DD/MM/YYYY (e.g. 15/03/2024)';
+  }
+};
 
 /** Format date using user preference. format: DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD, DD-MM-YYYY, MM-DD-YYYY, DD-MMM-yyyy */
 export const formatDateWithPreference = (date: string | Date, format?: string | null): string => {

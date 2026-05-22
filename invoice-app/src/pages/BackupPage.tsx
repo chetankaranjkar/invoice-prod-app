@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Download, Upload, Database, FileArchive, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/agent';
+import { useDateFormat } from '../hooks/useDateFormat';
 
 interface BackupInfo {
   fileName: string;
@@ -11,6 +12,7 @@ interface BackupInfo {
 
 export const BackupPage: React.FC = () => {
   const { themeColors } = useTheme();
+  const formatDatePref = useDateFormat();
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -126,14 +128,19 @@ export const BackupPage: React.FC = () => {
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const formatDate = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch {
-      return dateString;
-    }
-  };
+  const formatDateTimeDisplay = useCallback(
+    (dateString: string) => {
+      const d = new Date(dateString);
+      if (Number.isNaN(d.getTime())) return dateString;
+      const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return `${formatDatePref(ymd)} ${d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })}`;
+    },
+    [formatDatePref],
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -275,7 +282,7 @@ export const BackupPage: React.FC = () => {
                         {formatFileSize(backup.fileSize)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(backup.createdDate)}
+                        {formatDateTimeDisplay(backup.createdDate)}
                       </td>
                     </tr>
                   ))}

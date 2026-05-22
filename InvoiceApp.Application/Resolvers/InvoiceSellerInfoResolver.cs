@@ -49,6 +49,8 @@ namespace InvoiceApp.Application.Resolvers
                 Zip = source.User.Zip,
                 Phone = source.User.Phone,
                 LogoUrl = source.User.LogoUrl,
+                SignatureUrl = source.User.SignatureUrl,
+                IncludeSignatureOnInvoice = source.User.IncludeSignatureOnInvoice,
                 HeaderLogoBgColor = source.User.HeaderLogoBgColor,
                 AddressSectionBgColor = source.User.AddressSectionBgColor,
                 HeaderLogoTextColor = source.User.HeaderLogoTextColor,

@@ -7,6 +7,7 @@ import jsPDF from 'jspdf';
 import { Printer, Download } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDateFormat } from '../hooks/useDateFormat';
+import { resolveAssetUrl } from '../utils/helpers';
 
 interface InvoicePreviewProps {
   customer: Customer | null;
@@ -143,6 +144,11 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         Zip: userProfile.zip,
         phone: userProfile.phone,
         logoUrl: logoUrl,
+        signatureUrl: userProfile.signatureUrl || (userProfile as any).SignatureUrl || undefined,
+        includeSignatureOnInvoice: ((): boolean | undefined => {
+          const v = userProfile.includeSignatureOnInvoice ?? (userProfile as any).IncludeSignatureOnInvoice;
+          return v == null ? undefined : (v === true || v === 'true' || v === 1);
+        })(),
       };
 
       setCompanyInfoFromApi(companyData);
@@ -1295,6 +1301,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               </span>
               }
               <div className="Signature invoice-signature mt-2 mb-[6vw]">
+                {currentCompany.signatureUrl && currentCompany.includeSignatureOnInvoice !== false && (
+                  <img
+                    src={resolveAssetUrl(currentCompany.signatureUrl)}
+                    alt="Authorised Signature"
+                    className="max-h-12 max-w-[180px] object-contain mb-1"
+                    crossOrigin="anonymous"
+                  />
+                )}
                 <p className="text-xs"><strong>Signature</strong></p>
               </div>
 

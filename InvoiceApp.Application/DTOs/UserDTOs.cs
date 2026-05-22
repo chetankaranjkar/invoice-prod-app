@@ -22,6 +22,8 @@ namespace InvoiceApp.Application.DTOs
         public string? Zip { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
+        public string? SignatureUrl { get; set; }
+        public bool IncludeSignatureOnInvoice { get; set; } = true;
         public string? HeaderLogoBgColor { get; set; }
         public string? AddressSectionBgColor { get; set; }
         public string? HeaderLogoTextColor { get; set; }
@@ -67,6 +69,7 @@ namespace InvoiceApp.Application.DTOs
         public string? InvoicePrefix { get; set; }
         public decimal? DefaultGstPercentage { get; set; }
         public bool? DisableQuantity { get; set; }
+        public bool? IncludeSignatureOnInvoice { get; set; }
     }
 
     public class CreateUserDto

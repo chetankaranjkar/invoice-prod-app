@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, CheckCircle2, XCircle, Eye, RefreshCw } from 'lucide-react';
 import { api } from '../services/agent';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDateFormat } from '../hooks/useDateFormat';
 
 interface ErrorLog {
   id: number;
@@ -35,6 +36,7 @@ interface ErrorStats {
 
 export const ErrorLogPage: React.FC = () => {
   const { themeColors } = useTheme();
+  const formatDatePref = useDateFormat();
   const [errorLogs, setErrorLogs] = useState<ErrorLog[]>([]);
   const [stats, setStats] = useState<ErrorStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,14 +99,19 @@ export const ErrorLogPage: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch {
-      return dateString;
-    }
-  };
+  const formatDateTimeDisplay = useCallback(
+    (dateString: string) => {
+      const d = new Date(dateString);
+      if (Number.isNaN(d.getTime())) return dateString;
+      const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return `${formatDatePref(ymd)} ${d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })}`;
+    },
+    [formatDatePref],
+  );
 
   const getErrorTypeColor = (errorType: string): string => {
     if (errorType.includes("Exception") || errorType.includes("Error")) {
@@ -239,7 +246,7 @@ export const ErrorLogPage: React.FC = () => {
                       <div>{errorLog.requestMethod} {errorLog.requestPath}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(errorLog.createdAt)}
+                      {formatDateTimeDisplay(errorLog.createdAt)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
@@ -341,7 +348,7 @@ export const ErrorLogPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Date</label>
-                    <div className="mt-1 text-sm text-gray-900">{formatDate(selectedError.createdAt)}</div>
+                    <div className="mt-1 text-sm text-gray-900">{formatDateTimeDisplay(selectedError.createdAt)}</div>
                   </div>
                 </div>
 
@@ -389,7 +396,8 @@ export const ErrorLogPage: React.FC = () => {
                     <div className="bg-green-50 border border-green-200 rounded p-3">
                       <div className="text-sm font-medium text-green-800">Resolved</div>
                       <div className="text-sm text-green-700 mt-1">
-                        By: {selectedError.resolvedBy} on {selectedError.resolvedAt ? formatDate(selectedError.resolvedAt) : 'N/A'}
+                        By: {selectedError.resolvedBy} on{' '}
+                        {selectedError.resolvedAt ? formatDateTimeDisplay(selectedError.resolvedAt) : 'N/A'}
                       </div>
                       {selectedError.resolutionNotes && (
                         <div className="text-sm text-green-700 mt-2">

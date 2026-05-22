@@ -3,6 +3,7 @@ import { InvoiceForm } from '../components/InvoiceForm';
 import { InvoicePreview } from '../components/InvoicePreview';
 import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
+import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/agent';
 import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus, InvoiceLayoutConfigDto, CompanyInfo } from '../types';
@@ -51,6 +52,11 @@ function userProfileToCompanyInfo(p: Record<string, unknown>): CompanyInfo {
     Zip: (getProp(p, 'zip', 'Zip') ?? getProp(p, 'Zip', 'zip')) as string | undefined,
     phone: getProp(p, 'phone', 'Phone') as string | undefined,
     logoUrl: getProp(p, 'logoUrl', 'LogoUrl') as string | undefined,
+    signatureUrl: getProp(p, 'signatureUrl', 'SignatureUrl') as string | undefined,
+    includeSignatureOnInvoice: ((): boolean | undefined => {
+      const v = p['includeSignatureOnInvoice'] ?? p['IncludeSignatureOnInvoice'];
+      return v == null ? undefined : (v === true || v === 'true' || v === 1);
+    })(),
     headerLogoBgColor: getProp(p, 'headerLogoBgColor', 'HeaderLogoBgColor') as string | undefined,
     addressSectionBgColor: getProp(p, 'addressSectionBgColor', 'AddressSectionBgColor') as string | undefined,
     headerLogoTextColor: getProp(p, 'headerLogoTextColor', 'HeaderLogoTextColor') as string | undefined,
@@ -472,7 +478,8 @@ export const InvoiceCreationPage: React.FC = () => {
                   className="border rounded-md px-2 py-1 text-xs"
                 >
                   <option value="classic">Classic (Current)</option>
-                  <option value="static">Static Invoice</option>
+                  <option value="static-v2">Static Invoice (Modern)</option>
+                  <option value="static">Static Invoice (Classic)</option>
                   {layoutConfigs.map((layout) => (
                     <option key={layout.id} value={String(layout.id)}>
                       {layout.name} {layout.isDefault ? '(Default)' : ''}
@@ -487,6 +494,18 @@ export const InvoiceCreationPage: React.FC = () => {
               )}
               {selectedLayoutId === 'static' ? (
                 <TaxInvoice
+                  customer={selectedCustomer}
+                  items={invoiceItems}
+                  invoiceDate={invoiceDate}
+                  invoiceNumber={fullInvoiceNumber}
+                  paymentStatus={paymentStatus}
+                  initialPayment={initialPayment}
+                  companyInfo={companyInfoForPreview ?? undefined}
+                  forceUseCompanyInfo={isAdmin && !!selectedUserForInvoice}
+                  companyInfoLoading={companyInfoLoading}
+                />
+              ) : selectedLayoutId === 'static-v2' ? (
+                <TaxInvoiceV2
                   customer={selectedCustomer}
                   items={invoiceItems}
                   invoiceDate={invoiceDate}

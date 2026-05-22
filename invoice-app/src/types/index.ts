@@ -182,6 +182,8 @@ export interface UserProfile {
   zip?: string;
   phone?: string;
   logoUrl?: string;
+  signatureUrl?: string;
+  includeSignatureOnInvoice?: boolean;
   headerLogoBgColor?: string;
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
@@ -216,6 +218,8 @@ export interface CompanyInfo {
   Zip?: string;
   phone?: string;
   logoUrl?: string;
+  signatureUrl?: string;
+  includeSignatureOnInvoice?: boolean;
   headerLogoBgColor?: string;
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
@@ -255,6 +259,7 @@ export interface UpdateUserProfileDto {
   invoicePrefix?: string;
   defaultGstPercentage?: number;
   disableQuantity?: boolean;
+  includeSignatureOnInvoice?: boolean;
   logo?: File;
 }
 
@@ -277,6 +282,7 @@ export interface User {
   Zip?: string;
   phone?: string;
   logoUrl?: string;
+  signatureUrl?: string;
   headerLogoBgColor?: string;
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;
@@ -366,6 +372,8 @@ export interface InvoiceSellerInfo {
   zip?: string;
   phone?: string;
   logoUrl?: string;
+  signatureUrl?: string;
+  includeSignatureOnInvoice?: boolean;
   headerLogoBgColor?: string;
   addressSectionBgColor?: string;
   headerLogoTextColor?: string;

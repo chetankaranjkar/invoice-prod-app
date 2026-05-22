@@ -1,14 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, LogOut, Settings, UserCog, ChevronDown, User, History, Database, AlertTriangle, Menu, X, ChevronLeft, ChevronRight, Repeat, Package } from 'lucide-react';
+import {
+  LayoutDashboard, FileText, Users, LogOut, Settings, UserCog, ChevronDown, User as UserIcon,
+  History, Database, AlertTriangle, Menu, X, ChevronLeft, ChevronRight, Repeat, Package,
+  Search,
+} from 'lucide-react';
 import { UserProfileModal } from './UserProfileModal';
 import { ThemeSelector } from './ThemeSelector';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useAuth } from '../contexts/AuthContext';
+import { cn } from '../lib/cn';
 import type { UserProfile } from '../types';
 
 interface NavigationProps {
   onLogout: () => void;
+}
+
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  group?: string;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
@@ -20,25 +32,19 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
   const userRole = profile?.role || 'User';
   const businessName = profile?.businessName || '';
   const userName = profile?.name || profile?.email || 'User';
+  const userEmail = profile?.email || '';
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowUserDropdown(false);
       }
     };
-
-    if (showUserDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    if (showUserDropdown) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showUserDropdown]);
 
   const handleProfileUpdate = (updated: UserProfile) => {
@@ -47,21 +53,24 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
     navigate('/dashboard');
   };
 
-  const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    // MasterUser cannot create invoices - only manage admins
-    ...(userRole !== 'MasterUser' ? [{ name: 'Create Invoice', href: '/invoices', icon: FileText }] : []),
-    { name: 'Customers', href: '/customers', icon: Users },
-    ...(userRole !== 'MasterUser' ? [{ name: 'Products', href: '/products', icon: Package }] : []),
-    ...(userRole !== 'MasterUser' ? [{ name: 'Recurring Invoices', href: '/recurring-invoices', icon: Repeat }] : []),
-    ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'User Management', href: '/users', icon: UserCog }] : []),
-    ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'Backup & Restore', href: '/backup', icon: Database }] : []),
-    ...(userRole === 'MasterUser' ? [{ name: 'Error Logs', href: '/error-logs', icon: AlertTriangle }] : []),
-    ...(userRole !== 'MasterUser' ? [{ name: 'Invoice Layouts', href: '/invoice-layouts', icon: Settings }] : []),
+  const mainNav: NavItem[] = [
+    { name: 'Dashboard',        href: '/dashboard',        icon: LayoutDashboard, group: 'Main' },
+    ...(userRole !== 'MasterUser' ? [{ name: 'Create Invoice',     href: '/invoices',          icon: FileText, group: 'Main' }] : []),
+    { name: 'Customers',        href: '/customers',        icon: Users, group: 'Main' },
+    ...(userRole !== 'MasterUser' ? [{ name: 'Products',           href: '/products',          icon: Package, group: 'Main' }] : []),
+    ...(userRole !== 'MasterUser' ? [{ name: 'Recurring Invoices', href: '/recurring-invoices', icon: Repeat, group: 'Main' }] : []),
+  ];
+
+  const adminNav: NavItem[] = [
+    ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'User Management', href: '/users',  icon: UserCog, group: 'Admin' }] : []),
+    ...(userRole === 'MasterUser' || userRole === 'Admin' ? [{ name: 'Backup & Restore', href: '/backup', icon: Database, group: 'Admin' }] : []),
+    ...(userRole === 'MasterUser' ? [{ name: 'Error Logs', href: '/error-logs', icon: AlertTriangle, group: 'Admin' }] : []),
+    ...(userRole !== 'MasterUser' ? [{ name: 'Invoice Layouts', href: '/invoice-layouts', icon: Settings, group: 'Admin' }] : []),
   ];
 
   const handleNavigation = (href: string) => {
     navigate(href);
+    setIsMobileMenuOpen(false);
   };
 
   const handleLogout = () => {
@@ -69,190 +78,221 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
     navigate('/login');
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+
+  const initials = (userName || 'U').split(' ').map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+
+  const renderNavItem = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = isActive(item.href);
+    return (
+      <button
+        key={item.name}
+        onClick={() => handleNavigation(item.href)}
+        className={cn(
+          'group w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 relative',
+          isCollapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+          active
+            ? 'bg-[var(--primary-soft)] text-[var(--primary)] shadow-[inset_2px_0_0_0_var(--primary)]'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+        )}
+        title={isCollapsed ? item.name : ''}
+      >
+        <Icon className={cn('h-[18px] w-[18px] flex-shrink-0', !isCollapsed && 'mr-3')} />
+        {!isCollapsed && <span className="truncate">{item.name}</span>}
+        {isCollapsed && (
+          <span className="pointer-events-none absolute left-full ml-3 px-2 py-1 rounded-md bg-slate-900 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
+            {item.name}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b shadow-sm">
-        <div className="flex items-center justify-between px-4 h-16">
-          <h1 className="text-lg font-semibold text-gray-900 truncate">
-            {businessName ? businessName : 'Invoice App'}
-          </h1>
+      {/* Mobile top bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">IM</div>
+            <h1 className="text-base font-semibold text-slate-900 truncate max-w-[180px]">
+              {businessName || 'Invoice Master'}
+            </h1>
+          </div>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 text-gray-700 hover:bg-gray-100 rounded-md flex items-center justify-center"
+            className="p-2 -mr-2 text-slate-700 hover:bg-slate-100 rounded-lg"
             aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
-            {isMobileMenuOpen ? (
-              <X className="h-6 w-6" aria-hidden="true" />
-            ) : (
-              <Menu className="h-6 w-6" aria-hidden="true" />
-            )}
+            {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {/* Sidebar */}
       <aside
-        className={`fixed right-0 top-0 h-full bg-white border-l border-gray-200 shadow-lg transition-all duration-300 z-40 ${isCollapsed ? 'w-16' : 'w-64'
-          } ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}`}
+        className={cn(
+          'fixed left-0 top-0 h-full bg-white border-r border-slate-200 transition-all duration-300 z-40 flex flex-col',
+          isCollapsed ? 'w-[72px]' : 'w-[260px]',
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        )}
       >
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 h-16">
-            {!isCollapsed && (
-              <h1 className="text-lg font-semibold text-gray-900 truncate flex-1">
-                {businessName ? businessName : 'Invoice App'}
-              </h1>
+        {/* Brand / Header */}
+        <div className={cn('flex items-center border-b border-slate-200 h-16', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
+          {!isCollapsed ? (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
+                IM
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-900 truncate leading-tight">
+                  {businessName || 'Invoice Master'}
+                </div>
+                <div className="text-[11px] text-slate-500 leading-tight">Billing & Finance</div>
+              </div>
+            </div>
+          ) : (
+            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+              IM
+            </div>
+          )}
+
+          <button
+            onClick={toggleCollapse}
+            className={cn(
+              'hidden lg:flex p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md transition-colors items-center justify-center',
+              isCollapsed && 'absolute -right-3 top-7 bg-white border border-slate-200 shadow-sm rounded-full p-1'
             )}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={toggleCollapse}
-                className="hidden lg:flex p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors items-center justify-center"
-                title={isCollapsed ? 'Expand' : 'Collapse'}
-                aria-label={isCollapsed ? 'Expand menu' : 'Collapse menu'}
-              >
-                {isCollapsed ? (
-                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-                ) : (
-                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
-                )}
-              </button>
-              <button
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors lg:hidden flex items-center justify-center"
-                aria-label="Close menu"
-              >
-                <X className="h-5 w-5" aria-hidden="true" />
-              </button>
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+            aria-label={isCollapsed ? 'Expand menu' : 'Collapse menu'}
+          >
+            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors lg:hidden flex items-center justify-center"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Search (only when expanded) */}
+        {!isCollapsed && (
+          <div className="px-3 pt-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Quick search…"
+                className="w-full h-9 pl-8 pr-2 text-sm bg-slate-100 border border-transparent rounded-lg text-slate-700 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-slate-200 focus:ring-2 focus:ring-indigo-100 transition"
+              />
+              <kbd className="hidden sm:inline-flex absolute right-2 top-1/2 -translate-y-1/2 items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-slate-400 border border-slate-200 rounded">⌘K</kbd>
             </div>
           </div>
+        )}
 
-          {/* Navigation Items */}
-          <nav className="flex-1 overflow-y-auto py-4">
-            <div className="space-y-1 px-2">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
-                return (
+        {/* Nav items */}
+        <nav className="flex-1 overflow-y-auto py-3 px-3">
+          {!isCollapsed && (
+            <p className="px-2 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Main</p>
+          )}
+          <div className="space-y-0.5">
+            {mainNav.map(renderNavItem)}
+          </div>
+
+          {adminNav.length > 0 && (
+            <>
+              {!isCollapsed ? (
+                <p className="px-2 pt-5 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Admin</p>
+              ) : (
+                <div className="my-3 mx-2 h-px bg-slate-200" />
+              )}
+              <div className="space-y-0.5">
+                {adminNav.map(renderNavItem)}
+              </div>
+            </>
+          )}
+        </nav>
+
+        {/* Bottom: theme + user */}
+        <div className="border-t border-slate-200 p-3 space-y-2">
+          <div className={cn(isCollapsed && 'flex justify-center')}>
+            <ThemeSelector isCollapsed={isCollapsed} />
+          </div>
+
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowUserDropdown(!showUserDropdown)}
+              className={cn(
+                'w-full flex items-center rounded-lg text-sm transition-colors',
+                isCollapsed ? 'justify-center p-1.5 hover:bg-slate-100' : 'p-2 hover:bg-slate-100'
+              )}
+              title={isCollapsed ? userName : ''}
+            >
+              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-semibold shrink-0 shadow-sm">
+                {initials || <UserIcon className="h-4 w-4" />}
+              </div>
+              {!isCollapsed && (
+                <>
+                  <div className="ml-2.5 flex-1 min-w-0 text-left">
+                    <div className="text-sm font-semibold text-slate-900 truncate leading-tight">{userName}</div>
+                    <div className="text-[11px] text-slate-500 truncate leading-tight">{userRole}</div>
+                  </div>
+                  <ChevronDown className={cn('h-4 w-4 text-slate-400 transition-transform', showUserDropdown && 'rotate-180')} />
+                </>
+              )}
+            </button>
+
+            {showUserDropdown && (
+              <div className={cn(
+                'absolute bottom-full mb-2 w-60 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-scale-in',
+                isCollapsed ? 'left-full ml-2' : 'left-0 right-0'
+              )}>
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+                  <p className="text-sm font-semibold text-slate-900 truncate">{userName}</p>
+                  <p className="text-xs text-slate-500 truncate">{userEmail}</p>
+                  <span className="ui-badge-info mt-1.5">{userRole}</span>
+                </div>
+                <div className="py-1">
                   <button
-                    key={item.name}
-                    onClick={() => {
-                      handleNavigation(item.href);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active
-                      ? 'bg-gray-200 text-gray-900'
-                      : 'text-gray-700 hover:bg-gray-100'
-                      } ${isCollapsed ? 'justify-center' : ''}`}
-                    title={isCollapsed ? item.name : ''}
+                    onClick={() => { setShowProfileModal(true); setShowUserDropdown(false); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                   >
-                    <Icon
-                      className={`h-5 w-5 flex-shrink-0 ${isCollapsed ? '' : 'mr-3'}`}
-                      style={{ color: '#1f2937', stroke: 'currentColor', fill: 'none' }}
-                    />
-                    {!isCollapsed && <span>{item.name}</span>}
+                    <Settings className="h-4 w-4 text-slate-500" /> Profile settings
                   </button>
-                );
-              })}
-            </div>
-          </nav>
-
-          {/* Bottom Section */}
-          <div className="border-t border-gray-200 p-4 space-y-2">
-            {/* Theme Selector */}
-            <div className={isCollapsed ? 'flex justify-center' : ''}>
-              <ThemeSelector isCollapsed={isCollapsed} />
-            </div>
-
-            {/* User Section */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
-                className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors ${isCollapsed ? 'justify-center' : 'justify-between'
-                  }`}
-                title={isCollapsed ? userName : ''}
-              >
-                <div className="flex items-center">
-                  <User className="h-5 w-5" />
-                  {!isCollapsed && (
-                    <>
-                      <span className="ml-3 truncate max-w-[120px]">{userName}</span>
-                      <ChevronDown className={`h-4 w-4 ml-2 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
-                    </>
+                  {userRole === 'Admin' && (
+                    <button
+                      onClick={() => { navigate('/audit-logs'); setShowUserDropdown(false); setIsMobileMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <History className="h-4 w-4 text-slate-500" /> Audit logs
+                    </button>
                   )}
                 </div>
-              </button>
-
-              {/* Dropdown Menu */}
-              {showUserDropdown && (
-                <div
-                  className={`absolute bottom-full right-0 mb-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50 ${isCollapsed ? 'right-16' : ''
-                    }`}
-                >
-                  <div className="py-1">
-                    {/* User Info */}
-                    <div className="px-4 py-2 border-b border-gray-200">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{userName}</p>
-                      <p className="text-xs text-gray-500 truncate">{userRole}</p>
-                    </div>
-
-                    {/* Profile Option */}
-                    <button
-                      onClick={() => {
-                        setShowProfileModal(true);
-                        setShowUserDropdown(false);
-                      }}
-                      className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Profile
-                    </button>
-
-                    {/* Audit Logs Option (Admin only) */}
-                    {userRole === 'Admin' && (
-                      <button
-                        onClick={() => {
-                          navigate('/audit-logs');
-                          setShowUserDropdown(false);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                      >
-                        <History className="h-4 w-4 mr-2" />
-                        Audit Logs
-                      </button>
-                    )}
-
-                    {/* Logout Option */}
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setShowUserDropdown(false);
-                      }}
-                      className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Logout
-                    </button>
-                  </div>
+                <div className="py-1 border-t border-slate-100">
+                  <button
+                    onClick={() => { handleLogout(); setShowUserDropdown(false); }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  >
+                    <LogOut className="h-4 w-4" /> Logout
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </aside>
 
-      {/* Mobile Overlay */}
+      {/* Mobile overlay */}
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      {/* Profile Modal */}
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}

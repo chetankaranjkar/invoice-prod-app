@@ -4,6 +4,7 @@ import { InvoiceForm } from '../components/InvoiceForm';
 import { InvoicePreview } from '../components/InvoicePreview';
 import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
+import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
 import type { Customer, UpdateInvoiceDto, InvoiceItem, PaymentStatus, Invoice, InvoiceLayoutConfigDto } from '../types';
 import { calculateGST, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
@@ -266,7 +267,8 @@ export const EditInvoicePage: React.FC = () => {
                   className="border rounded-md px-2 py-1 text-sm"
                 >
                   <option value="classic">Classic (Current)</option>
-                  <option value="static">Static Invoice</option>
+                  <option value="static-v2">Static Invoice (Modern)</option>
+                  <option value="static">Static Invoice (Classic)</option>
                   {layoutConfigs.map((layout) => (
                     <option key={layout.id} value={String(layout.id)}>
                       {layout.name} {layout.isDefault ? '(Default)' : ''}
@@ -281,6 +283,16 @@ export const EditInvoicePage: React.FC = () => {
               )}
               {selectedLayoutId === 'static' ? (
                 <TaxInvoice
+                  customer={selectedCustomer}
+                  items={invoiceItems}
+                  invoiceDate={invoiceDate}
+                  invoiceNumber={invoiceNumber}
+                  paymentStatus={paymentStatus}
+                  initialPayment={initialPayment}
+                  companyInfo={invoice?.sellerInfo ? sellerInfoToCompanyInfo(invoice.sellerInfo) : undefined}
+                />
+              ) : selectedLayoutId === 'static-v2' ? (
+                <TaxInvoiceV2
                   customer={selectedCustomer}
                   items={invoiceItems}
                   invoiceDate={invoiceDate}

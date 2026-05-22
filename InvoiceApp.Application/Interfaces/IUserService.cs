@@ -10,5 +10,6 @@ namespace InvoiceApp.Application.Interfaces
         Task<UserProfileDto?> GetUserProfileAsync(Guid userId);
         Task<UserProfileDto?> UpdateUserProfileAsync(Guid userId, UpdateUserProfileDto updateDto);
         Task<string?> UploadLogoAsync(Guid userId, IFormFile logoFile);
+        Task<string?> UploadSignatureAsync(Guid userId, IFormFile signatureFile);
     }
 }

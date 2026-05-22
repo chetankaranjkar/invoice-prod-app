@@ -31,6 +31,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [formData, setFormData] = useState<UpdateUserProfileDto>({});
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>('');
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreview, setSignaturePreview] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('general');
@@ -74,6 +76,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         invoicePrefix: response.data.invoicePrefix || 'INV',
         defaultGstPercentage: response.data.defaultGstPercentage ?? 18,
         disableQuantity: response.data.disableQuantity || false,
+        includeSignatureOnInvoice: response.data.includeSignatureOnInvoice ?? true,
       });
       let logoUrl = response.data.logoUrl || '';
       if (logoUrl && logoUrl.trim() !== '') {
@@ -86,6 +89,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         }
       }
       setLogoPreview(logoUrl);
+
+      let signatureUrl = response.data.signatureUrl || '';
+      if (signatureUrl && signatureUrl.trim() !== '') {
+        if (signatureUrl.startsWith('/uploads/') && !signatureUrl.startsWith('http://') && !signatureUrl.startsWith('https://')) {
+          signatureUrl = `http://localhost:5001${signatureUrl}`;
+        } else if (signatureUrl.includes('https://localhost:7001')) {
+          signatureUrl = signatureUrl.replace('https://localhost:7001', 'http://localhost:5001');
+        } else if (signatureUrl.includes('https://localhost')) {
+          signatureUrl = signatureUrl.replace('https://localhost', 'http://localhost:5001');
+        }
+      }
+      setSignaturePreview(signatureUrl);
+      setSignatureFile(null);
     } catch (err: any) {
       setError('Failed to load profile');
     }
@@ -118,6 +134,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     setLogoPreview('');
   };
 
+  const handleSignatureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file for signature');
+        return;
+      }
+      if (file.size > 1 * 1024 * 1024) {
+        setError('Signature image size should be less than 1MB');
+        return;
+      }
+      setSignatureFile(file);
+      setSignaturePreview(URL.createObjectURL(file));
+      setError('');
+    }
+  };
+
+  const removeSignature = () => {
+    setSignatureFile(null);
+    setSignaturePreview('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -147,13 +185,30 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         invoicePrefix: formData.invoicePrefix || 'INV',
         defaultGstPercentage: formData.defaultGstPercentage ?? 18,
         disableQuantity: formData.disableQuantity || false,
+        includeSignatureOnInvoice: formData.includeSignatureOnInvoice ?? true,
         invoiceHeaderFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.invoiceHeaderFontSize ?? 12),
         addressSectionFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.addressSectionFontSize ?? 14),
         useDefaultInvoiceFontSizes: formData.useDefaultInvoiceFontSizes ?? true,
         dateFormat: formData.dateFormat || 'DD/MM/YYYY',
       };
       const response = await api.user.updateProfileWithLogo(profileData, logoFile || undefined);
-      onProfileUpdate(response.data);
+
+      // Upload signature separately if changed
+      let updatedProfile = response.data;
+      if (signatureFile) {
+        try {
+          await api.user.uploadSignature(signatureFile);
+          // Re-fetch to get latest signature URL
+          const refreshed = await api.user.getProfile();
+          updatedProfile = refreshed.data;
+        } catch (sigErr: any) {
+          setError(getApiErrorMessage(sigErr, 'Failed to upload signature'));
+          setLoading(false);
+          return;
+        }
+      }
+
+      onProfileUpdate(updatedProfile);
       onClose();
     } catch (err: any) {
       console.error('❌ Profile update failed:', err);
@@ -238,6 +293,47 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         <span className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm ${themeColors.info} text-white rounded-md cursor-pointer hover:opacity-90`}>
                           <Upload className="h-4 w-4" /> Choose Logo
                         </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Signature */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <Image className="h-4 w-4" /> Authorised Signature
+                  </h3>
+                  <div className="flex gap-6 items-start">
+                    <div className="w-40 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-white shrink-0">
+                      {signaturePreview ? (
+                        <div className="relative w-full h-full">
+                          <img src={signaturePreview} alt="Signature" className="w-full h-full object-contain rounded p-1" />
+                          <button type="button" onClick={removeSignature} className={`absolute -top-1 -right-1 ${themeColors.danger} text-white rounded-full p-0.5`} title="Remove signature">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <Upload className="h-7 w-7 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-600 mb-3">
+                        PNG, JPG (transparent PNG works best). Max 1MB. Appears above the &quot;Authorised Signatory&quot; line on invoices.
+                      </p>
+                      <label>
+                        <input type="file" accept="image/*" onChange={handleSignatureChange} className="hidden" />
+                        <span className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm ${themeColors.info} text-white rounded-md cursor-pointer hover:opacity-90`}>
+                          <Upload className="h-4 w-4" /> Choose Signature
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.includeSignatureOnInvoice ?? true}
+                          onChange={(e) => setFormData(prev => ({ ...prev, includeSignatureOnInvoice: e.target.checked }))}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        Include signature on invoices
                       </label>
                     </div>
                   </div>

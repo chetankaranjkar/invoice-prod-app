@@ -19,5 +19,15 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXAttribute[name.name="type"][value.type="Literal"][value.value="date"]',
+          message:
+            'Use DateInput from src/components/dates instead of <input type="date"> so User Profile date format and YYYY-MM-DD API values stay consistent.',
+        },
+      ],
+    },
   },
 ])

@@ -7,6 +7,9 @@ import {
   generateInvoiceNumber,
   amountToWords,
   calculateGST,
+  parseDateWithPreference,
+  formatDateWithPreference,
+  parseLocalDate,
 } from './helpers';
 
 describe('sellerInfoToCompanyInfo', () => {
@@ -73,6 +76,30 @@ describe('formatDate', () => {
     const result = formatDate(new Date('2024-03-15'));
     expect(result).toBeDefined();
     expect(typeof result).toBe('string');
+  });
+});
+
+describe('parseDateWithPreference', () => {
+  it('accepts ISO YYYY-MM-DD for any preference', () => {
+    expect(parseDateWithPreference('2024-03-15', 'MM/DD/YYYY')).toBe('2024-03-15');
+  });
+
+  it('parses DD/MM/YYYY', () => {
+    expect(parseDateWithPreference('15/03/2024', 'DD/MM/YYYY')).toBe('2024-03-15');
+  });
+
+  it('parses MM/DD/YYYY', () => {
+    expect(parseDateWithPreference('03/15/2024', 'MM/DD/YYYY')).toBe('2024-03-15');
+  });
+
+  it('parses DD-MMM-yyyy', () => {
+    expect(parseDateWithPreference('15-Mar-2024', 'DD-MMM-yyyy')).toBe('2024-03-15');
+  });
+
+  it('round-trips via formatDateWithPreference + parseLocalDate for DD/MM/YYYY', () => {
+    const iso = parseDateWithPreference('01/05/2024', 'DD/MM/YYYY');
+    expect(iso).toBe('2024-05-01');
+    expect(formatDateWithPreference(parseLocalDate(iso!), 'DD/MM/YYYY')).toBe('01/05/2024');
   });
 });
 

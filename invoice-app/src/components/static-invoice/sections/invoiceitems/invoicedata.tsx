@@ -8,8 +8,8 @@ function StaticInvoiceItems({ items }: StaticInvoiceItemsProps) {
   return (
     <div className="w-full flex flex-col">
       <table
-        className="w-full text-left border-collapse text-[10px] sm:text-xs md:text-sm shrink-0"
-        style={{ minHeight: '40vh' }}
+        className="invoice-table w-full text-left border-collapse text-[10px] sm:text-xs md:text-sm shrink-0"
+        style={items.length === 0 ? { minHeight: '40vh' } : undefined}
       >
         <thead>
           <tr className="bg-[#d1d5dc]">

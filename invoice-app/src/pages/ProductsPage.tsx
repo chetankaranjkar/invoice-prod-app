@@ -38,7 +38,7 @@ export const ProductsPage: React.FC = () => {
       const response = await api.products.getList();
       setProducts(response.data || []);
     } catch (err: unknown) {
-      setError(getApiErrorMessage(err, 'Failed to load products'));
+      setError(getApiErrorMessage(err as { response?: { data?: unknown; status?: number }; message?: string; code?: string }, 'Failed to load products'));
     } finally {
       setLoading(false);
     }
@@ -78,12 +78,10 @@ export const ProductsPage: React.FC = () => {
 
   if (userRole === 'MasterUser') {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Restricted</h1>
-            <p className="text-gray-600">MasterUser cannot manage products.</p>
-          </div>
+      <div className="max-w-2xl mx-auto">
+        <div className="ui-card p-8 text-center">
+          <h1 className="text-xl font-semibold text-slate-900 mb-2">Access Restricted</h1>
+          <p className="text-sm text-slate-500">MasterUser cannot manage products.</p>
         </div>
       </div>
     );
@@ -91,113 +89,92 @@ export const ProductsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-[60vh] flex items-center justify-center">
         <LoadingSpinner />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Products</h1>
-          <button
-            onClick={handleAdd}
-            className={`flex items-center gap-2 px-4 py-2 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover}`}
-          >
-            <Plus className="h-5 w-5" />
-            Add Product
+    <div className="max-w-[1200px] mx-auto">
+      <div className="page-header">
+        <div>
+          <h1 className="page-title">Products</h1>
+          <p className="page-subtitle">Manage product catalog with default rates and GST.</p>
+        </div>
+        <button onClick={handleAdd} className="ui-btn-primary">
+          <Plus className="h-4 w-4" /> Add Product
+        </button>
+      </div>
+
+      {error && <ErrorAlert message={error} onRetry={loadData} />}
+
+      {products.length === 0 ? (
+        <div className="ui-card p-12 text-center">
+          <div className="h-12 w-12 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center">
+            <Package className="h-6 w-6 text-slate-400" />
+          </div>
+          <h3 className="text-base font-semibold text-slate-900 mb-1">No products yet</h3>
+          <p className="text-sm text-slate-500 mb-5 max-w-sm mx-auto">
+            Add products here or they'll be added automatically when you create invoices.
+          </p>
+          <button onClick={handleAdd} className="ui-btn-primary mx-auto">
+            <Plus className="h-4 w-4" /> Add Product
           </button>
         </div>
-
-        {error && (
-          <ErrorAlert message={error} onDismiss={() => setError('')} />
-        )}
-
-        {products.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <Package className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <p className="text-lg font-medium text-gray-900 mb-2">No products yet</p>
-            <p className="text-gray-600 mb-4">
-              Add products here or they will be added automatically when you create invoices.
-            </p>
-            <button
-              onClick={handleAdd}
-              className={`inline-flex items-center gap-2 px-4 py-2 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover}`}
-            >
-              <Plus className="h-5 w-5" />
-              Add Product
-            </button>
-          </div>
-        ) : (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Product Name
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Default Rate (₹)
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Default GST %
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
+      ) : (
+        <div className="ui-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="ui-table">
+              <thead>
+                <tr>
+                  <th>Product Name</th>
+                  <th>Default Rate (₹)</th>
+                  <th>Default GST %</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id}>
+                    <td className="font-medium text-slate-900">{product.name}</td>
+                    <td>{product.defaultRate != null ? `₹${Number(product.defaultRate).toFixed(2)}` : '—'}</td>
+                    <td>{product.defaultGstPercentage != null ? `${product.defaultGstPercentage}%` : '—'}</td>
+                    <td>
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => handleEdit(product)}
+                          className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                          title="Edit"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(product)}
+                          className="p-1.5 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {products.map((product) => (
-                    <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {product.name}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {product.defaultRate != null ? `₹${Number(product.defaultRate).toFixed(2)}` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {product.defaultGstPercentage != null ? `${product.defaultGstPercentage}%` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(product)}
-                            className="p-2 text-gray-600 hover:bg-gray-100 rounded-md"
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(product)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-md"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
+        </div>
+      )}
 
-        {showModal && (
-          <ProductModal
-            isOpen={showModal}
-            onClose={handleModalClose}
-            onSave={handleModalSave}
-            product={editingProduct}
-            themeColors={themeColors}
-          />
-        )}
-      </div>
+      {showModal && (
+        <ProductModal
+          isOpen={showModal}
+          onClose={handleModalClose}
+          onSave={handleModalSave}
+          product={editingProduct}
+          themeColors={themeColors}
+        />
+      )}
     </div>
   );
 };

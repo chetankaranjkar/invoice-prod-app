@@ -3,12 +3,13 @@ import { DashboardStats } from '../components/DashboardStats';
 import { InvoicePreview } from '../components/InvoicePreview';
 import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvoiceRenderer';
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
+import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
 import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, FileText as FileTextIcon } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { useTheme } from '../contexts/ThemeContext';
+import { InvoiceStatusBadge } from '../components/ui/Badge';
 import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage } from '../utils/helpers';
 import { useDateFormat } from '../hooks/useDateFormat';
 import { AddPaymentModal } from '../components/AddPaymentModal';
@@ -17,7 +18,6 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 export const DashboardPage: React.FC = () => {
-  const { themeColors } = useTheme();
   const formatDate = useDateFormat();
   const [stats, setStats] = useState<DashboardStatsType>({
     totalPendingAmount: 0,
@@ -30,7 +30,8 @@ export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [selectedCustomerFilter, setSelectedCustomerFilter] = useState<number | 'all'>('all');
+  /** Type or pick a customer name; partial text filters within the date scope; exact full-name match shows all invoices for that customer */
+  const [invoiceCustomerFilter, setInvoiceCustomerFilter] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<PaymentStatus | 'all'>('all');
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [showAllInvoices, setShowAllInvoices] = useState<boolean>(false);
@@ -248,7 +249,7 @@ export const DashboardPage: React.FC = () => {
     setShowPendingInvoices(true);
     setShowAllInvoices(true); // Show all invoices view
     setSelectedStatusFilter('all'); // Reset status filter
-    setSelectedCustomerFilter('all'); // Reset customer filter
+    setInvoiceCustomerFilter(''); // Reset customer filter
     // Scroll to invoices section
     setTimeout(() => {
       const invoicesSection = document.getElementById('invoices-section');
@@ -315,10 +316,18 @@ export const DashboardPage: React.FC = () => {
     });
   };
 
+  const trimmedCustomerInvoice = invoiceCustomerFilter.trim();
+  const invoiceFilterExactCustomer = trimmedCustomerInvoice
+    ? customers.find(
+        (c) =>
+          c.customerName.trim().toLowerCase() === trimmedCustomerInvoice.toLowerCase(),
+      )
+    : undefined;
+
   // Apply filters
   const getFilteredInvoices = () => {
-    // When a specific customer is selected, show all their invoices (not just current month)
-    const useAllInvoices = showAllInvoices || selectedCustomerFilter !== 'all';
+    // Exact full-name match (e.g. from datalist pick): same as old single-customer dropdown — all invoices for that customer.
+    const useAllInvoices = showAllInvoices || !!invoiceFilterExactCustomer;
     let filtered = useAllInvoices ? allInvoices : getCurrentMonthInvoices();
 
     // Filter pending invoices (balanceAmount > 0) when showPendingInvoices is true
@@ -326,9 +335,14 @@ export const DashboardPage: React.FC = () => {
       filtered = filtered.filter(inv => inv.balanceAmount > 0);
     }
 
-    // Filter by customer
-    if (selectedCustomerFilter !== 'all') {
-      filtered = filtered.filter(inv => inv.customerId === selectedCustomerFilter);
+    // Filter by customer name (typed substring, or exact id match via full name)
+    if (invoiceFilterExactCustomer) {
+      filtered = filtered.filter((inv) => inv.customerId === invoiceFilterExactCustomer.id);
+    } else if (trimmedCustomerInvoice) {
+      const q = trimmedCustomerInvoice.toLowerCase();
+      filtered = filtered.filter((inv) =>
+        String(inv.customerName ?? '').toLowerCase().includes(q)
+      );
     }
 
     // Filter by status
@@ -371,7 +385,7 @@ export const DashboardPage: React.FC = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [selectedCustomerFilter, selectedStatusFilter, showAllInvoices, showPendingInvoices]);
+  }, [invoiceCustomerFilter, selectedStatusFilter, showAllInvoices, showPendingInvoices]);
 
   // Get available years from invoices
   const getAvailableYears = (): number[] => {
@@ -396,17 +410,14 @@ export const DashboardPage: React.FC = () => {
       let rowIndex = 1;
 
       allInvoices.forEach((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate);
-        const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
-
         // If invoice has items, create a row for each item
         if (invoice.items && invoice.items.length > 0) {
           invoice.items.forEach((item) => {
             excelData.push({
               'S.No': rowIndex++,
               'Invoice Number': invoice.invoiceNumber,
-              'Invoice Date': invoiceDate.toLocaleDateString('en-GB'),
-              'Due Date': dueDate ? dueDate.toLocaleDateString('en-GB') : '',
+              'Invoice Date': formatDate(invoice.invoiceDate),
+              'Due Date': invoice.dueDate ? formatDate(invoice.dueDate) : '',
               'Customer Name': invoice.customerName || '',
               'User': invoice.userName || '',
               'Product Name': item.productName || '',
@@ -433,8 +444,8 @@ export const DashboardPage: React.FC = () => {
           excelData.push({
             'S.No': rowIndex++,
             'Invoice Number': invoice.invoiceNumber,
-            'Invoice Date': invoiceDate.toLocaleDateString('en-GB'),
-            'Due Date': dueDate ? dueDate.toLocaleDateString('en-GB') : '',
+            'Invoice Date': formatDate(invoice.invoiceDate),
+            'Due Date': invoice.dueDate ? formatDate(invoice.dueDate) : '',
             'Customer Name': invoice.customerName || '',
             'User': invoice.userName || '',
             'Product Name': '',
@@ -502,17 +513,14 @@ export const DashboardPage: React.FC = () => {
       let rowIndex = 1;
 
       yearInvoices.forEach((invoice) => {
-        const invoiceDate = new Date(invoice.invoiceDate);
-        const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
-
         // If invoice has items, create a row for each item
         if (invoice.items && invoice.items.length > 0) {
           invoice.items.forEach((item) => {
             excelData.push({
               'S.No': rowIndex++,
               'Invoice Number': invoice.invoiceNumber,
-              'Invoice Date': invoiceDate.toLocaleDateString('en-GB'),
-              'Due Date': dueDate ? dueDate.toLocaleDateString('en-GB') : '',
+              'Invoice Date': formatDate(invoice.invoiceDate),
+              'Due Date': invoice.dueDate ? formatDate(invoice.dueDate) : '',
               'Customer Name': invoice.customerName || '',
               'User': invoice.userName || '',
               'Product Name': item.productName || '',
@@ -539,8 +547,8 @@ export const DashboardPage: React.FC = () => {
           excelData.push({
             'S.No': rowIndex++,
             'Invoice Number': invoice.invoiceNumber,
-            'Invoice Date': invoiceDate.toLocaleDateString('en-GB'),
-            'Due Date': dueDate ? dueDate.toLocaleDateString('en-GB') : '',
+            'Invoice Date': formatDate(invoice.invoiceDate),
+            'Due Date': invoice.dueDate ? formatDate(invoice.dueDate) : '',
             'Customer Name': invoice.customerName || '',
             'User': invoice.userName || '',
             'Product Name': '',
@@ -850,8 +858,11 @@ export const DashboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-full border-[3px] border-slate-200 border-t-indigo-500 animate-spin" />
+          <p className="text-sm text-slate-500">Loading dashboard…</p>
+        </div>
       </div>
     );
   }
@@ -875,19 +886,24 @@ export const DashboardPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-3 sm:p-4 md:p-6">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-4 sm:mb-6 md:mb-8">
-          {businessName ? (
-            <>
-              <span className="hidden sm:inline">{businessName} </span>
-              <span className="sm:hidden">{businessName.length > 15 ? businessName.substring(0, 15) + '...' : businessName}</span>
-              Dashboard
-            </>
-          ) : (
-            'Dashboard'
+    <div className="min-h-screen">
+      <div className="max-w-[1400px] mx-auto">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">
+              {businessName ? `${businessName.length > 30 ? businessName.substring(0, 30) + '…' : businessName} Dashboard` : 'Dashboard'}
+            </h1>
+            <p className="page-subtitle">Overview of customers, invoices and outstanding receivables.</p>
+          </div>
+          {userRole !== 'MasterUser' && (
+            <button
+              onClick={() => navigate('/invoices')}
+              className="ui-btn-primary self-start sm:self-auto"
+            >
+              <FileTextIcon className="h-4 w-4" /> Create Invoice
+            </button>
           )}
-        </h1>
+        </div>
 
         <DashboardStats
           stats={stats}
@@ -901,54 +917,52 @@ export const DashboardPage: React.FC = () => {
 
         {/* Pending Amount by User Modal */}
         {showPendingByUserModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
-              <div className="flex items-center justify-between p-4 border-b">
-                <h2 className="text-lg font-semibold text-gray-900">Pending Amount by User</h2>
+          <div className="ui-modal-backdrop">
+            <div className="ui-modal max-w-md">
+              <div className="ui-modal-header">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Pending Amount by User</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Outstanding receivables grouped by team member</p>
+                </div>
                 <button
                   onClick={() => setShowPendingByUserModal(false)}
-                  className="text-gray-400 hover:text-gray-600 p-1"
+                  className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                   title="Close"
                   aria-label="Close"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="p-4 max-h-80 overflow-y-auto">
+              <div className="ui-modal-body max-h-80">
                 {pendingByUser.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">No pending amounts.</p>
+                  <p className="text-slate-500 text-center py-6 text-sm">No pending amounts.</p>
                 ) : (
-                  <table className="w-full text-sm">
+                  <table className="ui-table">
                     <thead>
-                      <tr className="border-b text-left">
-                        <th className="py-2 font-medium text-gray-700">User</th>
-                        <th className="py-2 font-medium text-gray-700 text-right">Pending Amount</th>
-                      </tr>
+                      <tr><th>User</th><th className="text-right">Pending</th></tr>
                     </thead>
                     <tbody>
                       {pendingByUser.map((row) => (
-                        <tr key={row.userId} className="border-b last:border-0">
-                          <td className="py-2 text-gray-900">{row.userName}</td>
-                          <td className="py-2 text-right font-medium text-red-600">
-                            {formatCurrency(row.amount)}
-                          </td>
+                        <tr key={row.userId}>
+                          <td className="font-medium text-slate-900">{row.userName}</td>
+                          <td className="text-right font-semibold text-red-600">{formatCurrency(row.amount)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 )}
               </div>
-              <div className="p-4 border-t bg-gray-50 rounded-b-lg">
+              <div className="ui-modal-footer flex-col items-stretch gap-3">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="font-medium text-gray-700">Total</span>
-                  <span className="font-bold text-gray-900">{formatCurrency(stats.totalPendingAmount)}</span>
+                  <span className="font-medium text-slate-600">Total outstanding</span>
+                  <span className="font-bold text-slate-900 text-base">{formatCurrency(stats.totalPendingAmount)}</span>
                 </div>
                 <button
                   onClick={() => {
                     setShowPendingByUserModal(false);
                     handleViewPending();
                   }}
-                  className={`mt-3 w-full py-2 ${themeColors.primary} text-white rounded-md ${themeColors.primaryHover} text-sm font-medium`}
+                  className="ui-btn-primary w-full"
                 >
                   View Pending Invoices
                 </button>
@@ -958,25 +972,23 @@ export const DashboardPage: React.FC = () => {
         )}
 
         {/* Year-based Excel Export Section */}
-        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mt-4 sm:mt-6 md:mt-8">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-            <div className="w-full sm:w-auto">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900">Export Invoices by Year</h2>
-              <p className="text-xs sm:text-sm text-gray-600 mt-1">Download all invoices for a specific year in Excel format</p>
+        <div className="ui-card p-5 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Export Invoices by Year</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Download all invoices for a specific year in Excel format</p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center w-full sm:w-auto">
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900 text-sm sm:text-base"
+                className="ui-select min-w-[120px]"
                 title="Select year"
                 aria-label="Select year for export"
               >
                 {getAvailableYears().length > 0 ? (
                   getAvailableYears().map(year => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
+                    <option key={year} value={year}>{year}</option>
                   ))
                 ) : (
                   <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
@@ -984,96 +996,98 @@ export const DashboardPage: React.FC = () => {
               </select>
               <button
                 onClick={handleExportToExcelByYear}
-                className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2 ${themeColors.success} ${themeColors.successHover} text-white rounded-md transition-colors font-medium text-sm sm:text-base`}
+                className="ui-btn-success"
                 title={`Export invoices for year ${selectedYear} to Excel`}
                 aria-label={`Export invoices for year ${selectedYear} to Excel`}
               >
-                <Download className="h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Download Excel</span>
-                <span className="sm:hidden">Download</span>
+                <Download className="h-4 w-4" />
+                <span>Download Excel</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Current Month Invoices Section */}
-        <div id="invoices-section" className="bg-white rounded-lg shadow-md p-4 sm:p-6 mt-4 sm:mt-6 md:mt-8 scroll-mt-8">
-            <div className="flex flex-col gap-4 mb-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <h2 className="text-xl font-bold">
+        <div id="invoices-section" className="ui-card overflow-hidden scroll-mt-8">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-base font-semibold text-slate-900">
                   {showPendingInvoices
                     ? 'Pending Invoices'
-                    : showAllInvoices || selectedCustomerFilter !== 'all'
-                      ? selectedCustomerFilter !== 'all'
-                        ? `Invoices for ${customers.find(c => c.id === selectedCustomerFilter)?.customerName || 'Customer'}`
-                        : 'All Invoices'
-                      : 'Current Month Invoices'}
+                    : invoiceFilterExactCustomer
+                      ? `Invoices · ${invoiceFilterExactCustomer.customerName}`
+                      : trimmedCustomerInvoice
+                        ? showAllInvoices
+                          ? `All invoices · “${trimmedCustomerInvoice}”`
+                          : `Current month · “${trimmedCustomerInvoice}”`
+                        : showAllInvoices
+                          ? 'All Invoices'
+                          : 'Current Month Invoices'}
                 </h2>
-                <div className="flex flex-wrap gap-2">
-                  {showPendingInvoices && (
-                    <button
-                      onClick={() => {
-                        setShowPendingInvoices(false);
-                        setShowAllInvoices(false);
-                      }}
-                      className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    >
-                      Clear Filter
-                    </button>
-                  )}
+                <span className="ui-badge-neutral">{sortedInvoices.length}</span>
+                {showPendingInvoices && (
                   <button
-                    onClick={() => {
-                      setShowAllInvoices(!showAllInvoices);
-                      setShowPendingInvoices(false);
-                    }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${showAllInvoices
-                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    title={showAllInvoices ? 'Show only current month invoices' : 'Show all invoices'}
+                    onClick={() => { setShowPendingInvoices(false); setShowAllInvoices(false); }}
+                    className="ui-btn-ghost ui-btn-sm"
                   >
-                    {showAllInvoices ? 'Show Current Month' : 'Show All'}
+                    Clear filter
                   </button>
-                </div>
+                )}
               </div>
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-              {/* Export to Excel Button */}
-              <button
-                onClick={handleExportToExcel}
-                className={`flex items-center justify-center gap-2 px-4 py-2 ${themeColors.success} ${themeColors.successHover} text-white rounded-md transition-colors text-sm sm:text-base`}
-                title="Export all invoices to Excel"
-                aria-label="Export all invoices to Excel"
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Export to Excel</span>
-                <span className="sm:hidden">Export</span>
-              </button>
-
-              {/* Customer Filter */}
-              <select
-                value={selectedCustomerFilter}
-                onChange={(e) => setSelectedCustomerFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
-                title="Filter by customer"
-                aria-label="Filter invoices by customer"
-              >
-                <option value="all">All Customers</option>
-                {customers.map(customer => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.customerName}
-                  </option>
-                ))}
-              </select>
-
-              {/* Status Filter */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  onClick={() => { setShowAllInvoices(!showAllInvoices); setShowPendingInvoices(false); }}
+                  className={showAllInvoices ? 'ui-btn-primary ui-btn-sm' : 'ui-btn-secondary ui-btn-sm'}
+                  title={showAllInvoices ? 'Show only current month invoices' : 'Show all invoices'}
+                >
+                  {showAllInvoices ? 'Showing all' : 'Show all'}
+                </button>
+                <button
+                  onClick={handleExportToExcel}
+                  className="ui-btn-success ui-btn-sm"
+                  title="Export all invoices to Excel"
+                  aria-label="Export all invoices to Excel"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Export</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 flex-wrap items-stretch">
+              <div className="flex flex-col gap-1 min-w-0 sm:max-w-[min(100%,280px)]">
+                <label htmlFor="dash-invoice-customer-filter" className="sr-only">
+                  Filter by customer name
+                </label>
+                <input
+                  id="dash-invoice-customer-filter"
+                  type="text"
+                  list="dashboard-invoice-customer-names"
+                  value={invoiceCustomerFilter}
+                  onChange={(e) => setInvoiceCustomerFilter(e.target.value)}
+                  placeholder="All customers — type or choose"
+                  className="ui-select w-full min-w-0"
+                  autoComplete="off"
+                  title="Filters the invoice list. Partial name: current scope only. Exact full customer name from list: all invoices for that customer."
+                  aria-label="Filter invoices by customer name"
+                />
+                <datalist id="dashboard-invoice-customer-names">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.customerName} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-slate-500 leading-snug px-0.5">
+                  Type part of a name to filter below, or pick a full customer from suggestions to load all invoices for them.
+                </p>
+              </div>
               <select
                 value={selectedStatusFilter}
                 onChange={(e) => setSelectedStatusFilter(e.target.value as PaymentStatus | 'all')}
-                className="px-3 sm:px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                className="ui-select sm:max-w-[200px]"
                 title="Filter by payment status"
                 aria-label="Filter invoices by payment status"
               >
-                <option value="all">All Status</option>
+                <option value="all">All status</option>
                 <option value="Draft">Draft</option>
                 <option value="Sent">Sent</option>
                 <option value="Unpaid">Unpaid</option>
@@ -1084,242 +1098,208 @@ export const DashboardPage: React.FC = () => {
           </div>
           {filteredInvoices.length > 0 ? (
             <>
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button onClick={() => handleSort('invoiceNumber')} className="flex items-center hover:text-gray-700 focus:outline-none">
-                        Invoice #
-                        <SortIcon column="invoiceNumber" />
-                      </button>
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
-                      <button onClick={() => handleSort('customer')} className="flex items-center hover:text-gray-700 focus:outline-none">
-                        Customer
-                        <SortIcon column="customer" />
-                      </button>
-                    </th>
-                    {(userRole === 'MasterUser' || userRole === 'Admin') && (
-                      <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                        User
+              <div className="overflow-x-auto">
+                <table className="ui-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button onClick={() => handleSort('invoiceNumber')} className="flex items-center gap-1 hover:text-slate-700 focus:outline-none uppercase">
+                          Invoice # <SortIcon column="invoiceNumber" />
+                        </button>
                       </th>
-                    )}
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                      <button onClick={() => handleSort('date')} className="flex items-center hover:text-gray-700 focus:outline-none">
-                        Date
-                        <SortIcon column="date" />
-                      </button>
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      <button onClick={() => handleSort('amount')} className="flex items-center hover:text-gray-700 focus:outline-none">
-                        Amount
-                        <SortIcon column="amount" />
-                      </button>
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
-                      <button onClick={() => handleSort('balance')} className="flex items-center hover:text-gray-700 focus:outline-none">
-                        Balance
-                        <SortIcon column="balance" />
-                      </button>
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-gray-50">
-                      <td
-                        className="px-3 sm:px-6 py-4 text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
-                        onClick={() => handleViewInvoice(invoice)}
-                      >
-                        <div className="flex flex-col">
-                          <span className="whitespace-nowrap">{invoice.invoiceNumber}</span>
-                          <span className="text-xs text-gray-500 sm:hidden mt-1">{invoice.customerName}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
-                        {invoice.customerName}
-                      </td>
+                      <th className="hidden sm:table-cell">
+                        <button onClick={() => handleSort('customer')} className="flex items-center gap-1 hover:text-slate-700 focus:outline-none uppercase">
+                          Customer <SortIcon column="customer" />
+                        </button>
+                      </th>
                       {(userRole === 'MasterUser' || userRole === 'Admin') && (
-                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden md:table-cell">
-                          {invoice.userName || '-'}
-                        </td>
+                        <th className="hidden md:table-cell uppercase">User</th>
                       )}
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden lg:table-cell">
-                        {formatDate(invoice.invoiceDate)}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        ₹{invoice.grandTotal.toLocaleString()}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900 hidden md:table-cell">
-                        ₹{invoice.balanceAmount.toLocaleString()}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          invoice.status === 'Paid'
-                            ? 'bg-green-100 text-green-800'
-                            : invoice.status === 'Partially Paid'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : invoice.status === 'Sent'
-                            ? 'bg-blue-100 text-blue-800'
-                            : invoice.status === 'Draft'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-red-100 text-red-800'
-                          }`}>
-                          {invoice.status}
-                        </span>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                          {invoice.balanceAmount > 0 && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddPaymentClick(invoice);
-                              }}
-                              className="text-emerald-600 hover:text-emerald-900 p-1 rounded hover:bg-emerald-50"
-                              title="Add Payment"
-                            >
-                              <DollarSign className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/invoices/edit/${invoice.id}`);
-                            }}
-                            className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
-                            title="Edit Invoice"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDuplicateInvoice(invoice.id);
-                            }}
-                            className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
-                            title="Duplicate Invoice"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteInvoice(invoice.id, invoice.invoiceNumber);
-                            }}
-                            className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50"
-                            title="Delete Invoice"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
+                      <th className="hidden lg:table-cell">
+                        <button onClick={() => handleSort('date')} className="flex items-center gap-1 hover:text-slate-700 focus:outline-none uppercase">
+                          Date <SortIcon column="date" />
+                        </button>
+                      </th>
+                      <th>
+                        <button onClick={() => handleSort('amount')} className="flex items-center gap-1 hover:text-slate-700 focus:outline-none uppercase">
+                          Amount <SortIcon column="amount" />
+                        </button>
+                      </th>
+                      <th className="hidden md:table-cell">
+                        <button onClick={() => handleSort('balance')} className="flex items-center gap-1 hover:text-slate-700 focus:outline-none uppercase">
+                          Balance <SortIcon column="balance" />
+                        </button>
+                      </th>
+                      <th className="uppercase">Status</th>
+                      <th className="text-right uppercase">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {paginatedInvoices.map((invoice) => (
+                      <tr key={invoice.id}>
+                        <td
+                          className="cursor-pointer"
+                          onClick={() => handleViewInvoice(invoice)}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">{invoice.invoiceNumber}</span>
+                            <span className="text-xs text-slate-500 sm:hidden mt-0.5">{invoice.customerName}</span>
+                          </div>
+                        </td>
+                        <td className="hidden sm:table-cell whitespace-nowrap">{invoice.customerName}</td>
+                        {(userRole === 'MasterUser' || userRole === 'Admin') && (
+                          <td className="hidden md:table-cell whitespace-nowrap text-slate-500">{invoice.userName || '—'}</td>
+                        )}
+                        <td className="hidden lg:table-cell whitespace-nowrap text-slate-500">{formatDate(invoice.invoiceDate)}</td>
+                        <td className="font-semibold text-slate-900 whitespace-nowrap">₹{invoice.grandTotal.toLocaleString()}</td>
+                        <td className="hidden md:table-cell whitespace-nowrap">
+                          <span className={invoice.balanceAmount > 0 ? 'text-red-600 font-medium' : 'text-slate-500'}>
+                            ₹{invoice.balanceAmount.toLocaleString()}
+                          </span>
+                        </td>
+                        <td><InvoiceStatusBadge status={invoice.status} /></td>
+                        <td className="text-right">
+                          <div className="flex items-center gap-1 justify-end">
+                            {invoice.balanceAmount > 0 && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleAddPaymentClick(invoice); }}
+                                className="p-1.5 rounded-md text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                                title="Add Payment"
+                              >
+                                <DollarSign className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigate(`/invoices/edit/${invoice.id}`); }}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Edit Invoice"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDuplicateInvoice(invoice.id); }}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                              title="Duplicate Invoice"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteInvoice(invoice.id, invoice.invoiceNumber); }}
+                              className="p-1.5 rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Delete Invoice"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-3 sm:px-6 py-3 border-t border-gray-200 bg-gray-50">
-                <p className="text-sm text-gray-700">
-                  Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedInvoices.length)} of {sortedInvoices.length}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-5 sm:px-6 py-3 border-t border-slate-100 bg-slate-50/40">
+                  <p className="text-sm text-slate-500">
+                    Showing <span className="font-medium text-slate-700">{(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedInvoices.length)}</span> of <span className="font-medium text-slate-700">{sortedInvoices.length}</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="ui-btn-secondary ui-btn-sm"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-sm text-slate-500 px-2">Page {currentPage} of {totalPages}</span>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="ui-btn-secondary ui-btn-sm"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
             </>
           ) : (
-            <p className="text-gray-500 text-center py-4">No invoices found</p>
+            <div className="text-center py-12">
+              <FileTextIcon className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No invoices found</p>
+            </div>
           )}
         </div>
       </div>
 
       {/* Invoice Preview Modal */}
       {selectedInvoice && selectedCustomer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl relative my-4 sm:my-8 max-h-[95vh] overflow-y-auto">
-            <button
-              onClick={() => {
-                setSelectedInvoice(null);
-                setSelectedCustomer(null);
-              }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 z-10 bg-white rounded-full p-2 shadow-md"
-              title="Close"
-              aria-label="Close invoice preview"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        <div className="ui-modal-backdrop overflow-y-auto py-6">
+          <div className="ui-modal max-w-6xl relative">
+            <div className="ui-modal-header">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Invoice {selectedInvoice.invoiceNumber}</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{selectedCustomer.customerName}</p>
+              </div>
+              <button
+                onClick={() => { setSelectedInvoice(null); setSelectedCustomer(null); }}
+                className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                title="Close"
+                aria-label="Close invoice preview"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
             {loadingInvoiceDetails ? (
-              <div className="p-6 flex items-center justify-center min-h-[400px]">
+              <div className="p-12 flex items-center justify-center">
                 <LoadingSpinner />
               </div>
             ) : (
-              <div className="p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handlePrintInvoice}
-                      className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-800 text-sm"
+              <div className="ui-modal-body">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-sm font-medium text-slate-700 mr-1">Format:</label>
+                    <select
+                      value={selectedLayoutId}
+                      onChange={(e) => setSelectedLayoutId(e.target.value)}
+                      aria-label="Select invoice layout"
+                      className="ui-select max-w-[260px]"
                     >
+                      <option value="classic">Classic (Current)</option>
+                      <option value="static-v2">Static Invoice (Modern)</option>
+                      <option value="static">Static Invoice (Classic)</option>
+                      {layoutConfigs.map((layout) => (
+                        <option key={layout.id} value={String(layout.id)}>
+                          {layout.name} {layout.isDefault ? '(Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={handlePrintInvoice} className="ui-btn-secondary ui-btn-sm">
                       <Printer className="h-4 w-4" />
                       Print
                     </button>
-                    <button
-                      onClick={handleDownloadPdf}
-                      className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
-                    >
+                    <button onClick={handleDownloadPdf} className="ui-btn-success ui-btn-sm">
                       <Download className="h-4 w-4" />
                       Download PDF
                     </button>
                   </div>
                 </div>
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <label className="text-sm font-medium text-gray-700">Invoice Format</label>
-                  <select
-                    value={selectedLayoutId}
-                    onChange={(e) => setSelectedLayoutId(e.target.value)}
-                    aria-label="Select invoice layout"
-                    className="border rounded-md px-2 py-1 text-sm"
-                  >
-                    <option value="classic">Classic (Current)</option>
-                    <option value="static">Static Invoice</option>
-                    {layoutConfigs.map((layout) => (
-                      <option key={layout.id} value={String(layout.id)}>
-                        {layout.name} {layout.isDefault ? '(Default)' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
                 <div ref={previewRef} data-pdf-root="true">
                   {selectedLayoutId === 'static' ? (
                     <TaxInvoice
+                      customer={selectedCustomer}
+                      items={selectedInvoice.items || []}
+                      invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}
+                      invoiceNumber={selectedInvoice.invoiceNumber}
+                      paymentStatus={selectedInvoice.status}
+                      initialPayment={selectedInvoice.paidAmount}
+                      waveAmount={selectedInvoice.waveAmount || 0}
+                      payments={selectedInvoice.payments || []}
+                      companyInfo={selectedInvoice.sellerInfo ? sellerInfoToCompanyInfo(selectedInvoice.sellerInfo) : undefined}
+                    />
+                  ) : selectedLayoutId === 'static-v2' ? (
+                    <TaxInvoiceV2
                       customer={selectedCustomer}
                       items={selectedInvoice.items || []}
                       invoiceDate={selectedInvoice.invoiceDate ? new Date(selectedInvoice.invoiceDate).toISOString().split('T')[0] : ''}

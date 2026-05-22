@@ -60,6 +60,8 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(u => u.GstpNumber).HasMaxLength(50);
                 entity.Property(u => u.Phone).HasMaxLength(20);     // Add this
                 entity.Property(u => u.LogoUrl).HasMaxLength(500);  // Add this
+                entity.Property(u => u.SignatureUrl).HasMaxLength(500);
+                entity.Property(u => u.IncludeSignatureOnInvoice).HasDefaultValue(true);
                 entity.Property(u => u.Address).HasMaxLength(1000); // Add this
                 entity.Property(u => u.HeaderLogoBgColor).HasMaxLength(20);
                 entity.Property(u => u.AddressSectionBgColor).HasMaxLength(20);

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Filter } from 'lucide-react';
 import { api } from '../services/agent';
+import { useDateFormat } from '../hooks/useDateFormat';
+import { DateInput } from '../components/dates';
 
 interface AuditLog {
   id: string;
@@ -21,6 +23,7 @@ interface AuditLog {
 }
 
 export const AuditLogPage: React.FC = () => {
+  const formatDate = useDateFormat();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -174,19 +177,21 @@ export const AuditLogPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                <input
-                  type="date"
+                <DateInput
+                  allowEmpty
+                  ariaLabel="Audit log filter start date"
                   value={filters.startDate}
-                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                  onChange={(iso) => handleFilterChange('startDate', iso)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                <input
-                  type="date"
+                <DateInput
+                  allowEmpty
+                  ariaLabel="Audit log filter end date"
                   value={filters.endDate}
-                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                  onChange={(iso) => handleFilterChange('endDate', iso)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -222,7 +227,11 @@ export const AuditLogPage: React.FC = () => {
                 {auditLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50">
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(log.createdAt).toLocaleString()}
+                  {`${formatDate(log.createdAt)} ${new Date(log.createdAt).toLocaleTimeString(undefined, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}`}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div>

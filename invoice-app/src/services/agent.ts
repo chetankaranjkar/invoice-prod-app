@@ -181,6 +181,12 @@ export const api = {
       // Remove headers - let browser set Content-Type with boundary
     },
 
+    uploadSignature: (signatureFile: File) => {
+      const formData = new FormData();
+      formData.append('signature', signatureFile);
+      return agent.post<{ signatureUrl: string }>('User/upload-signature', formData);
+    },
+
     updateProfileWithLogo: (data: any, logoFile?: File) => {
       const formData = new FormData();
 
