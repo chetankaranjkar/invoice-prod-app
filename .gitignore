@@ -33,6 +33,9 @@ logs/
 test-results/
 vitest-results.json
 
+# User-uploaded signature images (runtime, per-user)
+InvoiceApp.Api/wwwroot/uploads/signatures/
+
 # Misc
 *.user
 *.suo
