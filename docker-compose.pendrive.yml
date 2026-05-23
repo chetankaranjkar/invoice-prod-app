@@ -1,8 +1,11 @@
-# Fixed project name so data volumes are the same from any install folder (dev, pendrive, etc.)
+# Pendrive / offline install — uses pre-loaded images (no source build).
+# Use with: docker compose -f docker-compose.pendrive.yml up -d
+# Images must be loaded first: docker load -i invoiceapp-images.tar
+
+# Same project name as docker-compose.yml — reuses existing DB/upload volumes
 name: invoiceapp
 
 services:
-  # SQL Server Database
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: invoiceapp-db
@@ -11,7 +14,7 @@ services:
       - SA_PASSWORD=YourStrong@Password123
       - MSSQL_PID=Express
     ports:
-      - "1434:1433" # External port 1434 maps to internal port 1433
+      - "1434:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
       - shared_backups:/var/opt/mssql/backup
@@ -25,11 +28,8 @@ services:
       retries: 30
       start_period: 90s
 
-  # API Backend
   api:
-    build:
-      context: .
-      dockerfile: InvoiceApp.Api/Dockerfile
+    image: invoiceapp-api:latest
     container_name: invoiceapp-api
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
@@ -59,13 +59,8 @@ services:
       retries: 3
       start_period: 60s
 
-  # Frontend
   frontend:
-    build:
-      context: ./invoice-app
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=/api/
+    image: invoiceapp-frontend:latest
     container_name: invoiceapp-frontend
     ports:
       - "3000:80"

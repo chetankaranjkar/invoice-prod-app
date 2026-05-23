@@ -22,12 +22,35 @@ echo.
 REM Change to script directory
 cd /d "%~dp0"
 
-REM Check if docker-compose.yml exists
-if not exist "docker-compose.yml" (
-    echo [ERROR] docker-compose.yml not found in current directory
-    echo Please run this script from the InvoiceApp directory
-    pause
-    exit /b 1
+REM Always use the same Compose project so DB/uploads volumes are reused (not folder name like "smallsize")
+set "COMPOSE_PROJECT_NAME=invoiceapp"
+
+REM Pendrive install uses pre-built images (no source). Dev folder may use full docker-compose.yml.
+set "COMPOSE_FILE=docker-compose.pendrive.yml"
+if not exist "%COMPOSE_FILE%" (
+    if exist "docker-compose.yml" (
+        set "COMPOSE_FILE=docker-compose.yml"
+    ) else (
+        echo [ERROR] docker-compose.pendrive.yml not found in current directory
+        echo Copy these files to the install folder:
+        echo   - docker-compose.pendrive.yml
+        echo   - invoiceapp-images.tar
+        echo   - install-from-pendrive.bat
+        pause
+        exit /b 1
+    )
+)
+echo Using compose file: %COMPOSE_FILE%
+echo.
+
+REM Pre-built images are required when source code is not present
+if /I not "%COMPOSE_FILE%"=="docker-compose.yml" (
+    if not exist "invoiceapp-images.tar" (
+        echo [ERROR] invoiceapp-images.tar not found.
+        echo Pendrive install needs pre-loaded images. Copy invoiceapp-images.tar to this folder.
+        pause
+        exit /b 1
+    )
 )
 
 REM Check if tar file exists
@@ -48,14 +71,14 @@ if exist "%TAR_FILE%" (
     echo.
 )
 
-REM Stop any existing containers
-echo Stopping any existing containers...
-docker-compose down
+REM Stop containers only — never "down -v" (that would delete database/upload volumes)
+echo Stopping containers (your data volumes are preserved)...
+docker compose -f "%COMPOSE_FILE%" stop 2>nul
 echo.
 
 REM Start SQL Server first
 echo Starting SQL Server...
-docker-compose up -d sqlserver
+docker compose -f "%COMPOSE_FILE%" up -d sqlserver
 if errorlevel 1 (
     echo [ERROR] Failed to start SQL Server container
     pause
@@ -68,7 +91,7 @@ timeout /t 90 /nobreak >nul
 
 REM Check SQL Server health
 echo Checking SQL Server health...
-docker-compose ps sqlserver | findstr /C:"healthy" >nul
+docker compose -f "%COMPOSE_FILE%" ps sqlserver | findstr /C:"healthy" >nul
 if errorlevel 1 (
     echo [WARNING] SQL Server may not be fully ready yet
     echo Waiting additional 30 seconds...
@@ -86,17 +109,28 @@ if errorlevel 1 (
     echo [OK] Backup directory permissions configured
 )
 
-REM Build and start API (this will create the database)
+REM Start API (pre-built image on pendrive; optional build only when full source is present)
 echo.
-echo Building and starting API (this will create the InvoiceApp database)...
-docker-compose build api
-if errorlevel 1 (
-    echo [ERROR] Failed to build API container
-    pause
-    exit /b 1
+if /I "%COMPOSE_FILE%"=="docker-compose.yml" if exist "InvoiceApp.Api\Dockerfile" (
+    echo Building and starting API from source...
+    docker compose -f "%COMPOSE_FILE%" build api
+    if errorlevel 1 (
+        echo [ERROR] Failed to build API container
+        pause
+        exit /b 1
+    )
+) else (
+    echo Starting API from pre-loaded image invoiceapp-api:latest...
+    docker image inspect invoiceapp-api:latest >nul 2>&1
+    if errorlevel 1 (
+        echo [ERROR] Image invoiceapp-api:latest not found.
+        echo Run: docker load -i invoiceapp-images.tar
+        pause
+        exit /b 1
+    )
 )
 
-docker-compose up -d api
+docker compose -f "%COMPOSE_FILE%" up -d api
 if errorlevel 1 (
     echo [ERROR] Failed to start API container
     pause
@@ -110,7 +144,11 @@ timeout /t 180 /nobreak >nul
 REM Start Frontend
 echo.
 echo Starting Frontend...
-docker-compose up -d frontend
+docker image inspect invoiceapp-frontend:latest >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Image invoiceapp-frontend:latest not found - trying compose pull/start anyway
+)
+docker compose -f "%COMPOSE_FILE%" up -d frontend
 if errorlevel 1 (
     echo [ERROR] Failed to start Frontend container
     pause
@@ -128,7 +166,7 @@ timeout /t 10 /nobreak >nul
 REM Check container status
 echo.
 echo Checking container status...
-docker-compose ps
+docker compose -f "%COMPOSE_FILE%" ps
 
 echo.
 echo ========================================
@@ -154,10 +192,10 @@ REM Verify database creation
 echo.
 echo Verifying InvoiceApp database was created...
 echo Checking API logs for database creation...
-docker-compose logs api --tail=100 | findstr /C:"Database" /C:"migration" /C:"InvoiceApp" /C:"connection" /C:"created" /C:"ready" /C:"healthy"
+docker compose -f "%COMPOSE_FILE%" logs api --tail=100 | findstr /C:"Database" /C:"migration" /C:"InvoiceApp" /C:"connection" /C:"created" /C:"ready" /C:"healthy"
 
 REM Check if database was created successfully
-docker-compose logs api | findstr /C:"InvoiceApp database" /C:"Database migrations applied" /C:"Database healthy" >nul
+docker compose -f "%COMPOSE_FILE%" logs api | findstr /C:"InvoiceApp database" /C:"Database migrations applied" /C:"Database healthy" >nul
 if errorlevel 1 (
     echo.
     echo [WARNING] Database creation may still be in progress or failed
@@ -165,11 +203,11 @@ if errorlevel 1 (
     timeout /t 60 /nobreak >nul
     
     REM Check again
-    docker-compose logs api | findstr /C:"InvoiceApp database" /C:"Database migrations applied" /C:"Database healthy" >nul
+    docker compose -f "%COMPOSE_FILE%" logs api | findstr /C:"InvoiceApp database" /C:"Database migrations applied" /C:"Database healthy" >nul
     if errorlevel 1 (
         echo [ERROR] Database creation appears to have failed
         echo.
-        echo Please check API logs: docker-compose logs api --tail=200
+        echo Please check API logs: docker compose -f "%COMPOSE_FILE%" logs api --tail=200
         echo.
         echo The API should automatically create the database on startup.
         echo If it didn't, the installation may have issues.
@@ -182,10 +220,13 @@ if errorlevel 1 (
 
 echo.
 echo To check logs:
-echo - API logs: docker-compose logs -f api
-echo - All logs: docker-compose logs -f
+echo - API logs: docker compose -f "%COMPOSE_FILE%" logs -f api
+echo - All logs: docker compose -f "%COMPOSE_FILE%" logs -f
 echo.
-echo To stop the application:
-echo - docker-compose down
+echo To stop the application (keeps your data):
+echo - docker compose -f "%COMPOSE_FILE%" stop
+echo.
+echo To remove containers AND delete all data volumes (destructive):
+echo - docker compose -f "%COMPOSE_FILE%" down -v
 echo.
 pause

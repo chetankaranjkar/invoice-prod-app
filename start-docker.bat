@@ -7,6 +7,9 @@ echo.
 REM Change to script directory (where docker-compose.yml is located)
 cd /d "%~dp0"
 
+REM Same project name everywhere so volumes are not recreated per folder
+set "COMPOSE_PROJECT_NAME=invoiceapp"
+
 REM Verify docker-compose.yml exists
 if not exist "docker-compose.yml" (
     echo [ERROR] docker-compose.yml not found in current directory
@@ -39,7 +42,7 @@ REM Check if containers are already running
 docker-compose ps | findstr "Up" >nul 2>&1
 if not errorlevel 1 (
     echo Containers are already running. Stopping them first...
-    docker-compose down
+    docker compose stop
     echo.
 )
 

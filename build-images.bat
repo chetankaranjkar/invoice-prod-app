@@ -103,7 +103,7 @@ echo.
 echo Next steps:
 echo 1. Copy invoiceapp-images.tar to pendrive/client machine
 echo 2. Copy these files to client:
-echo    - docker-compose.yml
+echo    - docker-compose.pendrive.yml
 echo    - install-from-pendrive.bat
 echo    - invoiceapp-images.tar
 echo 3. On client machine, navigate to InvoiceApp directory
