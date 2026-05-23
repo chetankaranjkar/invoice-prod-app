@@ -191,6 +191,18 @@ namespace InvoiceApp.Infrastructure.Data
                       .WithMany(i => i.InvoiceItems)
                       .HasForeignKey(ii => ii.InvoiceId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(ii => ii.ParentInvoiceItem)
+                      .WithMany(ii => ii.ChildItems)
+                      .HasForeignKey(ii => ii.ParentInvoiceItemId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(ii => ii.Product)
+                      .WithMany()
+                      .HasForeignKey(ii => ii.ProductId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(ii => new { ii.InvoiceId, ii.DisplayOrder });
             });
 
             // Payment configuration
@@ -357,14 +369,27 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(p => p.Name).IsRequired().HasMaxLength(300);
                 entity.Property(p => p.DefaultRate).HasPrecision(18, 2);
                 entity.Property(p => p.DefaultGstPercentage).HasPrecision(5, 2);
+                entity.Property(p => p.Description).HasMaxLength(1000);
+                entity.Property(p => p.ProductType)
+                      .HasConversion(
+                          v => v == Domain.Enums.ProductType.Sub ? "sub" : "parent",
+                          v => v == "sub" ? Domain.Enums.ProductType.Sub : Domain.Enums.ProductType.Parent)
+                      .HasMaxLength(20);
 
                 entity.HasIndex(p => p.UserId);
                 entity.HasIndex(p => new { p.UserId, p.Name }).IsUnique();
+                entity.HasIndex(p => p.ParentProductId);
+                entity.HasIndex(p => new { p.UserId, p.ProductType });
 
                 entity.HasOne(p => p.User)
                       .WithMany()
                       .HasForeignKey(p => p.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(p => p.ParentProduct)
+                      .WithMany(p => p.SubProducts)
+                      .HasForeignKey(p => p.ParentProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
         }
 

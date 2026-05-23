@@ -91,35 +91,10 @@ namespace InvoiceApp.Application.Services
                 invoiceNumber = await _invoiceRepository.GenerateInvoiceNumberAsync(effectiveUserId, invoicePrefix, invoiceDate);
             }
 
-            // Calculate item totals
-            var invoiceItems = new List<InvoiceItem>();
-            decimal totalAmount = 0;
-            decimal totalGst = 0;
-
-            foreach (var itemDto in createInvoiceDto.Items)
-            {
-                var amount = itemDto.Quantity * itemDto.Rate;
-                var gstAmount = amount * (itemDto.GstPercentage / 100);
-                var cgst = gstAmount / 2;
-                var sgst = gstAmount / 2;
-
-                invoiceItems.Add(new InvoiceItem
-                {
-                    ProductName = itemDto.ProductName,
-                    Quantity = itemDto.Quantity,
-                    Rate = itemDto.Rate,
-                    Amount = amount,
-                    GstPercentage = itemDto.GstPercentage,
-                    GstAmount = gstAmount,
-                    Cgst = cgst,
-                    Sgst = sgst
-                });
-
-                totalAmount += amount;
-                totalGst += gstAmount;
-            }
-
-            var grandTotal = totalAmount + totalGst;
+            NormalizeInvoiceItems(createInvoiceDto.Items);
+            var invoiceItems = InvoiceCalculationHelper.BuildInvoiceItems(createInvoiceDto.Items);
+            var totals = InvoiceCalculationHelper.CalculateInvoiceTotals(createInvoiceDto.Items);
+            var grandTotal = totals.GrandTotal;
 
             // Base invoice object
             var invoice = new Invoice
@@ -129,11 +104,11 @@ namespace InvoiceApp.Application.Services
                 CustomerId = createInvoiceDto.CustomerId,
                 InvoiceDate = invoiceDate,
                 DueDate = createInvoiceDto.DueDate,
-                TotalAmount = totalAmount,
-                GstPercentage = createInvoiceDto.Items.First().GstPercentage,
-                GstAmount = totalGst,
-                Cgst = totalGst / 2,
-                Sgst = totalGst / 2,
+                TotalAmount = totals.TotalAmount,
+                GstPercentage = createInvoiceDto.Items.FirstOrDefault()?.GstPercentage ?? 0,
+                GstAmount = totals.GstAmount,
+                Cgst = totals.Cgst,
+                Sgst = totals.Sgst,
                 GrandTotal = grandTotal,
                 BalanceAmount = grandTotal,
                 Status = createInvoiceDto.Status ?? "Unpaid", // Default to Unpaid
@@ -480,39 +455,17 @@ namespace InvoiceApp.Application.Services
             // Remove old items
             invoice.InvoiceItems.Clear();
 
-            // Calculate new item totals
-            decimal totalAmount = 0;
-            decimal totalGst = 0;
+            NormalizeInvoiceItems(updateInvoiceDto.Items);
+            var updatedItems = InvoiceCalculationHelper.BuildInvoiceItems(updateInvoiceDto.Items);
+            foreach (var item in updatedItems)
+                invoice.InvoiceItems.Add(item);
 
-            foreach (var itemDto in updateInvoiceDto.Items)
-            {
-                var amount = itemDto.Quantity * itemDto.Rate;
-                var gstAmount = amount * (itemDto.GstPercentage / 100);
-                var cgst = gstAmount / 2;
-                var sgst = gstAmount / 2;
-
-                invoice.InvoiceItems.Add(new InvoiceItem
-                {
-                    ProductName = itemDto.ProductName,
-                    Quantity = itemDto.Quantity,
-                    Rate = itemDto.Rate,
-                    Amount = amount,
-                    GstPercentage = itemDto.GstPercentage,
-                    GstAmount = gstAmount,
-                    Cgst = cgst,
-                    Sgst = sgst
-                });
-
-                totalAmount += amount;
-                totalGst += gstAmount;
-            }
-
-            // Update totals
-            invoice.TotalAmount = totalAmount;
-            invoice.GstAmount = totalGst;
-            invoice.Cgst = totalGst / 2;
-            invoice.Sgst = totalGst / 2;
-            invoice.GrandTotal = totalAmount + totalGst;
+            var totals = InvoiceCalculationHelper.CalculateInvoiceTotals(updateInvoiceDto.Items);
+            invoice.TotalAmount = totals.TotalAmount;
+            invoice.GstAmount = totals.GstAmount;
+            invoice.Cgst = totals.Cgst;
+            invoice.Sgst = totals.Sgst;
+            invoice.GrandTotal = totals.GrandTotal;
             invoice.GstPercentage = updateInvoiceDto.Items.FirstOrDefault()?.GstPercentage ?? 0;
 
             // Save products to catalog for autocomplete
@@ -659,17 +612,7 @@ namespace InvoiceApp.Application.Services
                 WaveAmount = 0,
                 BalanceAmount = originalInvoice.GrandTotal,
                 Status = "Unpaid",
-                InvoiceItems = originalInvoice.InvoiceItems.Select(item => new InvoiceItem
-                {
-                    ProductName = item.ProductName,
-                    Quantity = item.Quantity,
-                    Rate = item.Rate,
-                    Amount = item.Amount,
-                    GstPercentage = item.GstPercentage,
-                    GstAmount = item.GstAmount,
-                    Cgst = item.Cgst,
-                    Sgst = item.Sgst
-                }).ToList()
+                InvoiceItems = DuplicateInvoiceItems(originalInvoice.InvoiceItems)
             };
 
             // Snapshot seller info at duplication (duplicator's current profile)
@@ -721,5 +664,68 @@ namespace InvoiceApp.Application.Services
 
             return _mapper.Map<InvoiceDto>(createdInvoice);
         }
+
+        private static void NormalizeInvoiceItems(List<InvoiceItemDto> items)
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.DisplayOrder <= 0)
+                    item.DisplayOrder = i + 1;
+
+                if (string.IsNullOrWhiteSpace(item.ParentLineKey) && !item.ParentInvoiceItemId.HasValue)
+                    item.HierarchyLevel = 0;
+                else if (!string.IsNullOrWhiteSpace(item.ParentLineKey))
+                {
+                    item.HierarchyLevel = Math.Max(item.HierarchyLevel, 1);
+                }
+            }
+        }
+
+        private static List<InvoiceItem> DuplicateInvoiceItems(ICollection<InvoiceItem> sourceItems)
+        {
+            var parents = sourceItems.Where(i => i.ParentInvoiceItemId == null).OrderBy(i => i.DisplayOrder).ToList();
+            var children = sourceItems.Where(i => i.ParentInvoiceItemId != null).OrderBy(i => i.DisplayOrder).ToList();
+            var idMap = new Dictionary<int, InvoiceItem>();
+            var result = new List<InvoiceItem>();
+
+            foreach (var item in parents)
+            {
+                var copy = CopyInvoiceItem(item);
+                result.Add(copy);
+                idMap[item.Id] = copy;
+            }
+
+            foreach (var item in children)
+            {
+                var copy = CopyInvoiceItem(item);
+                if (item.ParentInvoiceItemId.HasValue &&
+                    idMap.TryGetValue(item.ParentInvoiceItemId.Value, out var parent))
+                {
+                    copy.ParentInvoiceItem = parent;
+                }
+                result.Add(copy);
+            }
+
+            return result;
+        }
+
+        private static InvoiceItem CopyInvoiceItem(InvoiceItem item) => new()
+        {
+            ProductId = item.ProductId,
+            ProductName = item.ProductName,
+            Quantity = item.Quantity,
+            Rate = item.Rate,
+            Amount = item.Amount,
+            GstPercentage = item.GstPercentage,
+            GstAmount = item.GstAmount,
+            Cgst = item.Cgst,
+            Sgst = item.Sgst,
+            HierarchyLevel = item.HierarchyLevel,
+            AffectTotal = item.AffectTotal,
+            Taxable = item.Taxable,
+            DisplayOrder = item.DisplayOrder,
+            ShowOnInvoice = item.ShowOnInvoice
+        };
     }
 }

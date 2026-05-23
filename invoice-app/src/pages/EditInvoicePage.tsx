@@ -8,6 +8,7 @@ import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
 import type { Customer, UpdateInvoiceDto, InvoiceItem, PaymentStatus, Invoice, InvoiceLayoutConfigDto } from '../types';
 import { calculateGST, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
+import { mapApiItemsToFormItems, calculateInvoiceTotals } from '../utils/invoiceCalculations';
 
 export const EditInvoicePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -88,14 +89,8 @@ export const EditInvoicePage: React.FC = () => {
         }
       }
 
-      // Convert invoice items to form format
-      const formItems: Partial<InvoiceItem>[] = invoiceData.items.map((item: any) => ({
-        productName: item.productName,
-        quantity: item.quantity,
-        rate: item.rate,
-        gstPercentage: item.gstPercentage,
-      }));
-
+      const formItems = mapApiItemsToFormItems(invoiceData.items || []);
+      calculateInvoiceTotals(formItems);
       setItems(formItems);
       setInvoiceItems(invoiceData.items || []);
     } catch (error: any) {

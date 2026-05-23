@@ -334,16 +334,28 @@ export interface CreateCustomerDto {
   Zip?: string;
 }
 
+export type ProductType = 'parent' | 'sub';
+
 /** Product from API for autocomplete when adding invoice items */
 export interface Product {
   id: number;
   name: string;
+  productType?: ProductType;
+  parentProductId?: number | null;
+  parentProductName?: string | null;
   defaultRate?: number;
   defaultGstPercentage?: number;
+  affectTotal?: boolean;
+  taxable?: boolean;
+  inheritGstFromParent?: boolean;
+  description?: string;
+  isActive?: boolean;
+  children?: Product[];
 }
 
 export interface InvoiceItem {
   id?: number;
+  productId?: number;
   productName: string;
   quantity: number;
   rate: number;
@@ -352,6 +364,15 @@ export interface InvoiceItem {
   gstAmount: number;
   cgst: number;
   sgst: number;
+  lineKey?: string;
+  parentLineKey?: string;
+  parentInvoiceItemId?: number;
+  hierarchyLevel?: number;
+  affectTotal?: boolean;
+  taxable?: boolean;
+  displayOrder?: number;
+  showOnInvoice?: boolean;
+  collapsed?: boolean;
 }
 
 /** Company info of the user who created the invoice (for display when admin views another user's invoice) */

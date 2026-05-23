@@ -12,6 +12,8 @@ interface ProductAutocompleteProps {
   focusRing?: string;
   ariaLabel?: string;
   required?: boolean;
+  /** When true, only parent products appear in suggestions */
+  parentOnly?: boolean;
 }
 
 const DEBOUNCE_MS = 250;
@@ -25,6 +27,7 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
   focusRing = 'focus:ring-blue-500',
   ariaLabel = 'Product name',
   required = false,
+  parentOnly = false,
 }) => {
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -102,13 +105,18 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
     setLoading(true);
     try {
       const res = await api.products.search(q.trim(), 15);
-      setSuggestions(Array.isArray(res.data) ? res.data : []);
+      const list = Array.isArray(res.data) ? res.data : [];
+      setSuggestions(
+        parentOnly
+          ? list.filter((p) => p.productType === 'parent' || !p.productType)
+          : list
+      );
     } catch {
       setSuggestions([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [parentOnly]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

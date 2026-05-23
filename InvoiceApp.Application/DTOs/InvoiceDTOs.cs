@@ -9,10 +9,28 @@ namespace InvoiceApp.Application.DTOs
 {
     public class InvoiceItemDto
     {
+        public int? Id { get; set; }
+        public int? ProductId { get; set; }
         public string ProductName { get; set; } = null!;
         public int Quantity { get; set; } = 1;
         public decimal Rate { get; set; }
         public decimal GstPercentage { get; set; }
+
+        /// <summary>Client-side stable key for parent-child linking on create/update.</summary>
+        public string? LineKey { get; set; }
+        public string? ParentLineKey { get; set; }
+        public int? ParentInvoiceItemId { get; set; }
+        public int HierarchyLevel { get; set; }
+        public bool AffectTotal { get; set; } = true;
+        public bool Taxable { get; set; } = true;
+        public int DisplayOrder { get; set; }
+        public bool ShowOnInvoice { get; set; } = true;
+
+        // Response-only computed fields
+        public decimal? Amount { get; set; }
+        public decimal? GstAmount { get; set; }
+        public decimal? Cgst { get; set; }
+        public decimal? Sgst { get; set; }
     }
 
     public class CreateInvoiceDto

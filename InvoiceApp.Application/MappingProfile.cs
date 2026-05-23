@@ -28,9 +28,18 @@ namespace InvoiceApp.Application
                 .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.InvoiceItems))
                 .ForMember(dest => dest.Payments, opt => opt.MapFrom(src => src.Payments));
 
-            CreateMap<InvoiceItem, InvoiceItemDto>();
+            CreateMap<InvoiceItem, InvoiceItemDto>()
+                .ForMember(dest => dest.Amount, opt => opt.MapFrom(src => src.Amount))
+                .ForMember(dest => dest.GstAmount, opt => opt.MapFrom(src => src.GstAmount))
+                .ForMember(dest => dest.Cgst, opt => opt.MapFrom(src => src.Cgst))
+                .ForMember(dest => dest.Sgst, opt => opt.MapFrom(src => src.Sgst))
+                .ForMember(dest => dest.LineKey, opt => opt.Ignore())
+                .ForMember(dest => dest.ParentLineKey, opt => opt.Ignore());
             CreateMap<Payment, PaymentDto>();
-            CreateMap<InvoiceItemDto, InvoiceItem>();
+            CreateMap<InvoiceItemDto, InvoiceItem>()
+                .ForMember(dest => dest.Id, opt => opt.Ignore())
+                .ForMember(dest => dest.ParentInvoiceItem, opt => opt.Ignore())
+                .ForMember(dest => dest.ChildItems, opt => opt.Ignore());
             CreateMap<PaymentDto, Payment>();
 
             CreateMap<User, UserProfileDto>()

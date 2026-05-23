@@ -40,6 +40,28 @@ namespace InvoiceApp.Api.Controllers
             return Ok(products);
         }
 
+        [HttpGet("tree")]
+        public async Task<ActionResult<List<ProductDto>>> GetTree()
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized("User not authenticated");
+
+            var tree = await _productService.GetProductTreeAsync(userId.Value);
+            return Ok(tree);
+        }
+
+        [HttpGet("{parentId:int}/children")]
+        public async Task<ActionResult<List<ProductDto>>> GetChildren(int parentId)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized("User not authenticated");
+
+            var children = await _productService.GetSubProductsAsync(parentId, userId.Value);
+            return Ok(children);
+        }
+
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ProductDto>> GetById(int id)
         {
@@ -106,10 +128,17 @@ namespace InvoiceApp.Api.Controllers
             if (userId == null)
                 return Unauthorized("User not authenticated");
 
-            var deleted = await _productService.DeleteProductAsync(id, userId.Value);
-            if (!deleted)
-                return NotFound();
-            return NoContent();
+            try
+            {
+                var deleted = await _productService.DeleteProductAsync(id, userId.Value);
+                if (!deleted)
+                    return NotFound();
+                return NoContent();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
         }
     }
 }

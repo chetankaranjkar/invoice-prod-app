@@ -49,6 +49,31 @@ namespace InvoiceApp.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<List<Product>> GetAllWithHierarchyByUserIdAsync(Guid userId)
+        {
+            return await _context.Products
+                .AsNoTracking()
+                .Where(p => p.UserId == userId)
+                .OrderBy(p => p.ProductType)
+                .ThenBy(p => p.Name)
+                .ToListAsync();
+        }
+
+        public async Task<List<Product>> GetChildrenByParentIdAsync(int parentId, Guid userId)
+        {
+            return await _context.Products
+                .AsNoTracking()
+                .Where(p => p.UserId == userId && p.ParentProductId == parentId && p.IsActive)
+                .OrderBy(p => p.Name)
+                .ToListAsync();
+        }
+
+        public async Task<int> CountChildrenAsync(int parentId, Guid userId)
+        {
+            return await _context.Products
+                .CountAsync(p => p.UserId == userId && p.ParentProductId == parentId);
+        }
+
         public async Task<Product?> GetByIdAsync(int id, Guid userId)
         {
             return await _context.Products

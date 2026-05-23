@@ -243,11 +243,11 @@ export const api = {
     search: (q: string, limit?: number) =>
       agent.get<any[]>('Product/search', { params: { q: q || undefined, limit: limit ?? 20 } }),
     getList: () => agent.get<any[]>('Product'),
+    getTree: () => agent.get<any[]>('Product/tree'),
+    getChildren: (parentId: number) => agent.get<any[]>(`Product/${parentId}/children`),
     getById: (id: number) => agent.get<any>(`Product/${id}`),
-    create: (data: { name: string; defaultRate?: number; defaultGstPercentage?: number }) =>
-      agent.post<any>('Product', data),
-    update: (id: number, data: { name: string; defaultRate?: number; defaultGstPercentage?: number }) =>
-      agent.put<any>(`Product/${id}`, data),
+    create: (data: Record<string, unknown>) => agent.post<any>('Product', data),
+    update: (id: number, data: Record<string, unknown>) => agent.put<any>(`Product/${id}`, data),
     delete: (id: number) => agent.delete(`Product/${id}`),
   },
 

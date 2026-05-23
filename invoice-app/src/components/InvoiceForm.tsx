@@ -5,9 +5,14 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto, Product } from '../types';
 import { InvoiceFormTaxableDetails } from './InvoiceFormTaxableDetails.tsx';
-import { calculateGST, getFinancialYearString, parseLocalDate } from '../utils/helpers';
+import { getFinancialYearString, parseLocalDate } from '../utils/helpers';
+import {
+  calculateInvoiceTotals,
+  createLineKey,
+  toInvoiceItemDtoPayload,
+} from '../utils/invoiceCalculations';
 import { AddCustomerModal } from './AddCustomerModal';
-import { ProductAutocomplete } from './ProductAutocomplete';
+import { HierarchicalInvoiceItems } from './invoice/HierarchicalInvoiceItems';
 import { DateInput } from './dates';
 import { InvoiceTemplateModal } from './InvoiceTemplateModal';
 import { ToWords } from 'to-words';
@@ -163,11 +168,12 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   };
 
   const calculateTotals = () => {
-    const totalAmount = items.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const totalGST = items.reduce((sum, item) => sum + (item.gstAmount || 0), 0);
-    const grandTotal = totalAmount + totalGST;
-
-    return { totalAmount, totalGST, grandTotal };
+    const totals = calculateInvoiceTotals(items);
+    return {
+      totalAmount: totals.totalAmount,
+      totalGST: totals.gstAmount,
+      grandTotal: totals.grandTotal,
+    };
   };
 
   const handlePaymentStatusChange = (status: PaymentStatus) => {
@@ -217,12 +223,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       const invoiceData = {
         customerId: selectedCustomer,
         dueDate: undefined,
-        items: items.map(item => ({
-          productName: item.productName!,
-          quantity: item.quantity!,
-          rate: item.rate!,
-          gstPercentage: item.gstPercentage!,
-        })),
+        items: toInvoiceItemDtoPayload(items),
         status: paymentStatus,
       };
       onInvoiceCreate(invoiceData);
@@ -255,12 +256,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       invoiceNumber: fullInvoiceNumber,
       invoiceDate: invoiceDate || new Date().toISOString().split('T')[0],
       invoicePrefix: '', // Will be set from user profile on backend
-      items: items.map(item => ({
-        productName: item.productName!,
-        quantity: item.quantity!,
-        rate: item.rate!,
-        gstPercentage: item.gstPercentage!,
-      })),
+      items: toInvoiceItemDtoPayload(items),
       status: finalStatus,
       initialPayment: finalInitialPayment,
       ...(onBehalfOfUserId && { onBehalfOfUserId }),
@@ -520,112 +516,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               </div>
             )}
 
-            <div className={`space-y-2 ${selectedCustomer === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
-              {items.map((item, index) => (
-                  <div key={index} className="min-w-0 w-full overflow-visible border rounded-md p-2 sm:p-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 sm:gap-3 items-end">
-                    <div className="sm:col-span-2 lg:col-span-3 min-w-0 w-full">
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        Product Name *
-                      </label>
-                      <ProductAutocomplete
-                        value={item.productName || ''}
-                        onChange={(name, product) => handleProductChange(index, name, product)}
-                        disabled={selectedCustomer === 0}
-                        focusRing={focusRing}
-                        ariaLabel={`Product name ${index + 1}`}
-                        required
-                      />
-                    </div>
-
-                    <div className="sm:col-span-1 lg:col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        {disableQuantity ? 'Quantity (Fixed: 1)' : 'Quantity *'}
-                      </label>
-                      {disableQuantity ? (
-                        <input
-                          type="number"
-                          value="1"
-                          disabled
-                          aria-label={`Quantity ${index + 1}`}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md bg-gray-100 cursor-not-allowed"
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={item.quantity || ''}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'quantity', Number(e.target.value))}
-                          disabled={selectedCustomer === 0}
-                          aria-label={`Quantity ${index + 1}`}
-                          className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                          required
-                        />
-                      )}
-                    </div>
-
-                    <div className="sm:col-span-1 lg:col-span-3">
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        Rate (₹) *
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.rate || ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateItem(index, 'rate', Number(e.target.value))}
-                        disabled={selectedCustomer === 0}
-                        aria-label={`Rate ${index + 1}`}
-                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                        required
-                      />
-                    </div>
-
-                    <div className="sm:col-span-1 lg:col-span-2">
-                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
-                        GST % *
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={item.gstPercentage !== undefined && item.gstPercentage !== null ? item.gstPercentage : ''}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                          const value = e.target.value === '' ? undefined : Number(e.target.value);
-                          updateItem(index, 'gstPercentage', value !== undefined ? value : 0);
-                        }}
-                        disabled={selectedCustomer === 0}
-                        aria-label={`GST percentage ${index + 1}`}
-                        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${selectedCustomer === 0 ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                        required
-                      />
-                    </div>
-
-                    <div className="sm:col-span-1 lg:col-span-2">
-                      <button
-                        type="button"
-                        onClick={() => removeItem(index)}
-                        disabled={selectedCustomer === 0}
-                        className="w-full p-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Remove item"
-                        aria-label="Remove item"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Calculated amounts */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 mt-2 pt-2 border-t text-xs">
-                    <div><span className="font-medium">Amount:</span> ₹{item.amount?.toFixed(2) || '0.00'}</div>
-                    <div><span className="font-medium">GST:</span> ₹{item.gstAmount?.toFixed(2) || '0.00'}</div>
-                    <div><span className="font-medium">CGST:</span> ₹{item.cgst?.toFixed(2) || '0.00'}</div>
-                    <div><span className="font-medium">SGST:</span> ₹{item.sgst?.toFixed(2) || '0.00'}</div>
-                  </div>
-                </div>
-              ))}
+            <div className={selectedCustomer === 0 ? 'opacity-50 pointer-events-none' : ''}>
+              <HierarchicalInvoiceItems
+                items={items}
+                setItems={setItems}
+                disableQuantity={disableQuantity}
+                defaultGstPercentage={defaultGstPercentage}
+              />
             </div>
+
           </div>
 
           {/* Taxable Amount Details */}
@@ -661,11 +560,15 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
         onClose={() => setShowTemplateModal(false)}
         onLoadTemplate={(templateItems: InvoiceTemplateItemDto[]) => {
           // Convert template items to form items
-          const formItems = templateItems.map(item => ({
+          const formItems = templateItems.map((item, i) => ({
+            lineKey: createLineKey(),
             productName: item.productName,
             quantity: item.quantity,
             rate: item.rate,
             gstPercentage: item.gstPercentage,
+            affectTotal: true,
+            hierarchyLevel: 0,
+            displayOrder: i + 1,
           }));
           setItems(formItems);
         }}

@@ -91,7 +91,16 @@ export const InvoiceCreationPage: React.FC = () => {
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
 
   const [items, setItems] = useState<Partial<InvoiceItem>[]>([
-    { productName: '', quantity: 1, rate: 0, gstPercentage: 18 },
+    {
+      lineKey: `line_${Date.now()}`,
+      productName: '',
+      quantity: 1,
+      rate: 0,
+      gstPercentage: 18,
+      affectTotal: true,
+      hierarchyLevel: 0,
+      displayOrder: 1,
+    },
   ]);
 
   const [users, setUsers] = useState<UserOption[]>([]);
