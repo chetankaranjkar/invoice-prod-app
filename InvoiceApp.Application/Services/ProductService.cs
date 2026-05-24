@@ -27,7 +27,8 @@ namespace InvoiceApp.Application.Services
             Taxable = p.Taxable,
             InheritGstFromParent = p.InheritGstFromParent,
             Description = p.Description,
-            IsActive = p.IsActive
+            IsActive = p.IsActive,
+            DisplayOrder = p.DisplayOrder
         };
 
         public async Task<List<ProductDto>> SearchProductsAsync(Guid userId, string? search, int limit = 20)
@@ -55,7 +56,8 @@ namespace InvoiceApp.Application.Services
                     dto.Children = products
                         .Where(c => c.ParentProductId == p.Id)
                         .Select(c => ToDto(c, parentNames))
-                        .OrderBy(c => c.Name)
+                        .OrderBy(c => c.DisplayOrder)
+                        .ThenBy(c => c.Name)
                         .ToList();
                     return dto;
                 })
@@ -104,7 +106,8 @@ namespace InvoiceApp.Application.Services
                 Taxable = dto.Taxable ?? true,
                 InheritGstFromParent = dto.InheritGstFromParent ?? false,
                 Description = dto.Description?.Trim(),
-                IsActive = dto.IsActive
+                IsActive = dto.IsActive,
+                DisplayOrder = dto.DisplayOrder
             };
 
             var created = await _productRepository.AddAsync(product);
@@ -146,9 +149,31 @@ namespace InvoiceApp.Application.Services
             product.InheritGstFromParent = dto.InheritGstFromParent ?? false;
             product.Description = dto.Description?.Trim();
             product.IsActive = dto.IsActive;
+            product.DisplayOrder = dto.DisplayOrder;
 
             var updated = await _productRepository.UpdateAsync(product);
             return ToDto(updated);
+        }
+
+        public async Task ReorderProductsAsync(Guid userId, List<ReorderProductItemDto> items)
+        {
+            if (items == null || items.Count == 0)
+                return;
+
+            var ids = items.Select(i => i.Id).ToList();
+            var products = await _productRepository.GetByIdsAsync(userId, ids);
+            if (products.Count != ids.Count)
+                throw new ArgumentException("One or more products were not found.");
+
+            foreach (var item in items)
+            {
+                var product = products.First(p => p.Id == item.Id);
+                if (product.ProductType == ProductType.Sub && product.ParentProductId == null)
+                    throw new InvalidOperationException("Invalid sub-product hierarchy.");
+                product.DisplayOrder = item.DisplayOrder;
+            }
+
+            await _productRepository.UpdateRangeAsync(products);
         }
 
         public async Task<bool> DeleteProductAsync(int id, Guid userId)

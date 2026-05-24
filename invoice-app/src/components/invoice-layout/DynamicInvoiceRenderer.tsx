@@ -8,6 +8,7 @@ import { ItemsTableSection } from './sections/ItemsTableSection';
 import { TotalsSection } from './sections/TotalsSection';
 import { FooterSection } from './sections/FooterSection';
 import { StaticTextSection } from './sections/StaticTextSection';
+import { calculateInvoiceTotals } from '../../utils/invoiceCalculations';
 
 interface DynamicInvoiceRendererProps {
   layout: InvoiceLayoutConfig;
@@ -93,30 +94,15 @@ const normalizeLogoUrl = (logoUrl?: string | null): string | null => {
 };
 
 const computeTotals = (items: InvoiceItem[], initialPayment = 0, waveAmount = 0): TotalsSummary => {
-  const totals = items.reduce(
-    (acc, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const rate = Number(item.rate) || 0;
-      const amount = Number(item.amount) || (quantity * rate);
-      const gstPercentage = Number(item.gstPercentage) || 0;
-      const gstAmount = Number(item.gstAmount) || (amount * gstPercentage / 100);
-      return {
-        totalAmount: acc.totalAmount + amount,
-        totalGST: acc.totalGST + gstAmount,
-        grandTotal: acc.grandTotal + (amount + gstAmount),
-      };
-    },
-    { totalAmount: 0, totalGST: 0, grandTotal: 0 }
-  );
-
+  const t = calculateInvoiceTotals(items);
   const totalPaid = Number(initialPayment) || 0;
   const totalWave = Number(waveAmount) || 0;
-  const balanceAmount = Math.max(0, totals.grandTotal - totalPaid - totalWave);
+  const balanceAmount = Math.max(0, t.grandTotal - totalPaid - totalWave);
 
   return {
-    totalAmount: totals.totalAmount,
-    totalGST: totals.totalGST,
-    grandTotal: totals.grandTotal,
+    totalAmount: t.totalAmount,
+    totalGST: t.gstAmount,
+    grandTotal: t.grandTotal,
     totalPaid,
     totalWave,
     balanceAmount,

@@ -423,8 +423,19 @@ body {
   .invoice-header h1 { margin: 0 0 4px 0 !important; padding: 0 !important; }
   .invoice-logo { min-height: 0 !important; height: 35mm !important; align-items: flex-start !important; }
   .invoice-table { height: auto !important; min-height: 0 !important; }
+  .invoice-description-table,
+  .invoice-hierarchy-table.invoice-description-table,
+  .invoice-description-table-wrap,
+  .invoice-hierarchy-table-wrap {
+    min-height: 0 !important;
+    height: auto !important;
+  }
   .invoice-table tbody { min-height: 0 !important; height: auto !important; }
-  .invoice-table tbody tr { height: auto !important; page-break-inside: avoid; break-inside: avoid; }
+  .invoice-table tbody tr {
+    height: auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
   .invoice-signature { margin-bottom: 4mm !important; page-break-inside: avoid; break-inside: avoid; }
   .invoice-empty-row { height: 12mm !important; }
 
@@ -476,13 +487,26 @@ body {
 .pdf-export .invoice-header { padding-top: 0 !important; }
 .pdf-export .invoice-header h1 { margin: 0 0 4px 0 !important; padding: 0 !important; }
 .pdf-export .invoice-logo { min-height: 0 !important; height: 30mm !important; align-items: flex-start !important; }
-.pdf-export .invoice-table {
+.pdf-export .invoice-table:not(.invoice-description-table) {
   height: auto !important; min-height: 0 !important;
   margin-left: 0 !important; margin-right: 0 !important;
   width: 100% !important;
 }
-.pdf-export .invoice-table tbody { min-height: 0 !important; height: auto !important; width: 100% !important; }
-.pdf-export .invoice-table tbody tr { height: auto !important; }
+.pdf-export .invoice-table:not(.invoice-description-table) tbody {
+  min-height: 0 !important; height: auto !important; width: 100% !important;
+}
+.pdf-export .invoice-table:not(.invoice-description-table) tbody tr {
+  height: auto !important;
+}
+.pdf-export .invoice-description-table-wrap,
+.pdf-export .invoice-hierarchy-table-wrap {
+  min-height: 0 !important;
+  height: auto !important;
+}
+.pdf-export .invoice-description-table {
+  min-height: 0 !important;
+  height: auto !important;
+}
 .pdf-export .invoice-table th,
 .pdf-export .invoice-table td { vertical-align: middle !important; }
 .pdf-export .invoice-table thead th {
@@ -542,3 +566,57 @@ body {
 .pdf-export .static-invoice-v2 .mb-5,
 .pdf-export .static-invoice-v2 .mb-6 { margin-bottom: 2mm !important; }
 .pdf-export .static-invoice-v2 h1 { font-size: 16px !important; }
+
+/* Hierarchy invoice table — full borders; compact height (content-driven) */
+:root {
+  --invoice-description-empty-min-height: 8rem;
+}
+
+.invoice-hierarchy-table-wrap,
+.invoice-description-table-wrap {
+  border: 1px solid #9ca3af;
+  height: auto;
+}
+
+.invoice-hierarchy-table,
+.invoice-description-table {
+  table-layout: fixed;
+  width: 100%;
+  height: auto;
+  border-collapse: collapse;
+}
+
+/* Empty state only — small placeholder, not a % of the page */
+.invoice-description-empty-cell {
+  min-height: var(--invoice-description-empty-min-height);
+  vertical-align: middle;
+}
+
+.invoice-hierarchy-table th,
+.invoice-hierarchy-table td {
+  border: 1px solid #9ca3af !important;
+  box-sizing: border-box;
+}
+
+.pdf-export .invoice-hierarchy-table-wrap,
+.pdf-export .invoice-description-table-wrap {
+  border: 1px solid #6b7280 !important;
+  overflow: visible !important;
+}
+
+.pdf-export .invoice-hierarchy-table th,
+.pdf-export .invoice-hierarchy-table td {
+  border: 1px solid #6b7280 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@media print {
+  .invoice-hierarchy-table th,
+  .invoice-hierarchy-table td {
+    border: 1px solid #000 !important;
+  }
+  .invoice-description-empty-cell {
+    min-height: 6rem !important;
+  }
+}

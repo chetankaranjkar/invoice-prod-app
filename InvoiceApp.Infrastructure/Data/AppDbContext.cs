@@ -200,7 +200,7 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.HasOne(ii => ii.Product)
                       .WithMany()
                       .HasForeignKey(ii => ii.ProductId)
-                      .OnDelete(DeleteBehavior.SetNull);
+                      .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(ii => new { ii.InvoiceId, ii.DisplayOrder });
             });

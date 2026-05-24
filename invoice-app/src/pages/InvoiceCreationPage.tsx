@@ -7,7 +7,8 @@ import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/agent';
 import type { Customer, CreateInvoiceDto, InvoiceItem, PaymentStatus, InvoiceLayoutConfigDto, CompanyInfo } from '../types';
-import { calculateGST, getFinancialYearString, parseLocalDate, getApiErrorMessage } from '../utils/helpers';
+import { getFinancialYearString, parseLocalDate, getApiErrorMessage } from '../utils/helpers';
+import { formItemsToPreviewInvoiceItems } from '../utils/invoiceCalculations';
 
 interface UserOption {
   id: string;
@@ -359,31 +360,8 @@ export const InvoiceCreationPage: React.FC = () => {
     }
   };
 
-  // Update preview items whenever items state changes
   useEffect(() => {
-    const previewItems: InvoiceItem[] = items
-      .filter(item => item.productName && item.quantity && item.rate) // Only include valid items
-      .map((item, index) => {
-        const quantity = Number(item.quantity) || 0;
-        const rate = Number(item.rate) || 0;
-        const gstPercentage = Number(item.gstPercentage) || 0;
-        const amount = quantity * rate;
-        const { gstAmount, cgst, sgst } = calculateGST(amount, gstPercentage);
-
-        return {
-          id: index,
-          productName: item.productName!,
-          quantity: quantity,
-          rate: rate,
-          amount: amount,
-          gstPercentage: gstPercentage,
-          gstAmount: gstAmount,
-          cgst: cgst,
-          sgst: sgst,
-        };
-      });
-
-    setInvoiceItems(previewItems);
+    setInvoiceItems(formItemsToPreviewInvoiceItems(items));
   }, [items]);
 
   // MasterUser cannot create invoices

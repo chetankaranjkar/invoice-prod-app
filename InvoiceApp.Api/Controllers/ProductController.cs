@@ -121,6 +121,28 @@ namespace InvoiceApp.Api.Controllers
             }
         }
 
+        [HttpPut("reorder")]
+        public async Task<ActionResult> Reorder([FromBody] List<ReorderProductItemDto> items)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            if (userId == null)
+                return Unauthorized("User not authenticated");
+
+            try
+            {
+                await _productService.ReorderProductsAsync(userId.Value, items);
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+        }
+
         [HttpDelete("{id:int}")]
         public async Task<ActionResult> Delete(int id)
         {

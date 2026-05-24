@@ -12,6 +12,7 @@ namespace InvoiceApp.Application.Interfaces
         Task<ProductDto> CreateProductAsync(Guid userId, CreateProductDto dto);
         Task<ProductDto?> UpdateProductAsync(int id, Guid userId, UpdateProductDto dto);
         Task<bool> DeleteProductAsync(int id, Guid userId);
+        Task ReorderProductsAsync(Guid userId, List<ReorderProductItemDto> items);
         Task UpsertProductsFromInvoiceAsync(Guid userId, IEnumerable<(string Name, decimal Rate, decimal GstPercentage)> items);
     }
 }

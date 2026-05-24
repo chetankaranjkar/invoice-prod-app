@@ -249,6 +249,8 @@ export const api = {
     create: (data: Record<string, unknown>) => agent.post<any>('Product', data),
     update: (id: number, data: Record<string, unknown>) => agent.put<any>(`Product/${id}`, data),
     delete: (id: number) => agent.delete(`Product/${id}`),
+    reorder: (items: { id: number; displayOrder: number }[]) =>
+      agent.put('Product/reorder', items),
   },
 
   // Invoice APIs

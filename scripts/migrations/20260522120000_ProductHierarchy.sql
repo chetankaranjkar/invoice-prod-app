@@ -115,7 +115,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_InvoiceItems_Products_ProductId')
 BEGIN
     ALTER TABLE InvoiceItems ADD CONSTRAINT FK_InvoiceItems_Products_ProductId
-        FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE SET NULL;
+        FOREIGN KEY (ProductId) REFERENCES Products(Id) ON DELETE NO ACTION;
 END
 GO
 

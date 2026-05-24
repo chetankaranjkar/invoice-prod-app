@@ -35,64 +35,207 @@ export function calculateLineAmounts(
   return { amount, ...gst };
 }
 
+/** Row model for invoice table / PDF rendering */
+export interface RenderInvoiceRow {
+  key: string;
+  item: InvoiceLineInput;
+  isSub: boolean;
+  /** SR column: number for parent, empty for sub-lines */
+  serialNumber: number | null;
+  treePrefix: '' | '├' | '└';
+}
+
+export interface FlattenHierarchyOptions {
+  visibleOnly?: boolean;
+  /** @deprecated Prefer showSubItems — when false, hides all sub-lines */
+  hideZeroCostSubs?: boolean;
+  showSubItems?: boolean;
+  showSubItemAmounts?: boolean;
+  hideInternalBreakdown?: boolean;
+}
+
+function shouldShowSubLine(
+  child: InvoiceLineInput,
+  options: FlattenHierarchyOptions
+): boolean {
+  if (options.hideInternalBreakdown) return false;
+  if (options.showSubItems === false) return false;
+  if (options.visibleOnly && child.showOnInvoice === false) return false;
+  if (options.hideZeroCostSubs && !child.affectTotal) {
+    const amt = child.amount ?? (Number(child.quantity) || 0) * (Number(child.rate) || 0);
+    if (amt === 0) return false;
+  }
+  return true;
+}
+
+/** Flat list for legacy callers; prefer flattenHierarchyForRender for templates. */
 export function flattenInvoiceItems(
   items: InvoiceLineInput[],
-  options?: { visibleOnly?: boolean; hideZeroCostSubs?: boolean }
+  options?: FlattenHierarchyOptions
 ): InvoiceLineInput[] {
-  const { visibleOnly = false, hideZeroCostSubs = false } = options ?? {};
-  const parents = items.filter((i) => !i.parentLineKey && (i.hierarchyLevel ?? 0) === 0);
-  const childrenByParent = new Map<string, InvoiceLineInput[]>();
+  return flattenHierarchyForRender(items, options).map((r) => r.item);
+}
 
-  items
-    .filter((i) => i.parentLineKey)
-    .forEach((child) => {
-      const key = child.parentLineKey!;
-      if (!childrenByParent.has(key)) childrenByParent.set(key, []);
-      childrenByParent.get(key)!.push(child);
+/**
+ * Parent-first tree flattening with SR only on parents and tree prefixes on subs.
+ */
+export function flattenHierarchyForRender(
+  items: InvoiceLineInput[],
+  options: FlattenHierarchyOptions = {}
+): RenderInvoiceRow[] {
+  const normalized = ensureHierarchyKeys(items);
+  const hierarchy = buildInvoiceHierarchy(normalized);
+  const rows: RenderInvoiceRow[] = [];
+  let serial = 0;
+
+  hierarchy.forEach((parent) => {
+    if (options.visibleOnly && parent.showOnInvoice === false) return;
+
+    serial += 1;
+    rows.push({
+      key: parent.lineKey ?? `p-${serial}`,
+      item: parent,
+      isSub: false,
+      serialNumber: serial,
+      treePrefix: '',
     });
 
-  const flat: InvoiceLineInput[] = [];
-  parents.forEach((parent) => {
-    if (visibleOnly && parent.showOnInvoice === false) return;
-    flat.push(parent);
-    const kids = childrenByParent.get(parent.lineKey ?? '') ?? [];
-    kids
-      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
-      .forEach((child) => {
-        if (visibleOnly && child.showOnInvoice === false) return;
-        if (hideZeroCostSubs && !child.affectTotal) {
-          const amt = child.amount ?? (child.quantity ?? 0) * (child.rate ?? 0);
-          if (amt === 0) return;
-        }
-        flat.push(child);
+    const kids = (parent.children ?? []).filter((c) => shouldShowSubLine(c, options));
+    kids.forEach((child, idx) => {
+      const isLast = idx === kids.length - 1;
+      rows.push({
+        key: child.lineKey ?? `c-${serial}-${idx}`,
+        item: child,
+        isSub: true,
+        serialNumber: null,
+        treePrefix: isLast ? '└' : '├',
       });
+    });
   });
 
-  const orphanChildren = items.filter(
-    (i) => i.parentLineKey && !parents.some((p) => p.lineKey === i.parentLineKey)
-  );
-  return [...flat, ...orphanChildren];
+  return rows;
+}
+
+/** Ensure lineKey / parentLineKey exist (API uses parentInvoiceItemId). */
+export function ensureHierarchyKeys(items: InvoiceLineInput[]): InvoiceLineInput[] {
+  if (!items.length) return [];
+
+  const hasLineKeys = items.some((i) => i.lineKey);
+  const hasParentRefs = items.some((i) => i.parentLineKey || i.parentInvoiceItemId != null);
+
+  if (hasLineKeys && items.every((i) => !i.parentInvoiceItemId || i.parentLineKey)) {
+    return items.map((i) => ({ ...i }));
+  }
+
+  if (hasParentRefs) {
+    return mapApiItemsToFormItems(
+      items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        productName: i.productName ?? '',
+        quantity: i.quantity ?? 1,
+        rate: i.rate ?? 0,
+        gstPercentage: i.gstPercentage ?? 0,
+        amount: i.amount,
+        gstAmount: i.gstAmount,
+        cgst: i.cgst,
+        sgst: i.sgst,
+        parentInvoiceItemId: i.parentInvoiceItemId,
+        hierarchyLevel: i.hierarchyLevel,
+        affectTotal: i.affectTotal,
+        taxable: i.taxable,
+        displayOrder: i.displayOrder,
+        showOnInvoice: i.showOnInvoice,
+      }))
+    );
+  }
+
+  return items.map((i, index) => ({
+    ...i,
+    lineKey: i.lineKey ?? `legacy-${index}`,
+    hierarchyLevel: i.hierarchyLevel ?? 0,
+  }));
+}
+
+/** Form / editor state → preview + PDF items (keeps hierarchy, includes ₹0 sub-lines). */
+export function formItemsToPreviewInvoiceItems(items: InvoiceLineInput[]): InvoiceItem[] {
+  const working = items
+    .filter((i) => (i.productName ?? '').trim().length > 0)
+    .map((i) => ({ ...i }));
+
+  calculateInvoiceTotals(working);
+
+  return working.map((item, index) => ({
+    id: item.id ?? index,
+    productId: item.productId,
+    productName: item.productName!.trim(),
+    quantity: item.quantity ?? 1,
+    rate: item.rate ?? 0,
+    amount: item.amount ?? 0,
+    gstPercentage: item.gstPercentage ?? 0,
+    gstAmount: item.gstAmount ?? 0,
+    cgst: item.cgst ?? 0,
+    sgst: item.sgst ?? 0,
+    lineKey: item.lineKey,
+    parentLineKey: item.parentLineKey,
+    parentInvoiceItemId: item.parentInvoiceItemId,
+    hierarchyLevel: item.hierarchyLevel ?? (item.parentLineKey ? 1 : 0),
+    affectTotal: item.affectTotal,
+    taxable: item.taxable,
+    displayOrder: item.displayOrder,
+    showOnInvoice: item.showOnInvoice,
+  }));
+}
+
+/** API / dashboard invoice lines → render-ready items */
+export function normalizeInvoiceItemsForRender(items: InvoiceItem[]): InvoiceItem[] {
+  if (!items?.length) return [];
+  const prepared = ensureHierarchyKeys(items);
+  calculateInvoiceTotals(prepared);
+  return formItemsToPreviewInvoiceItems(prepared);
+}
+
+export function nextParentDisplayOrder(items: InvoiceLineInput[]): number {
+  const orders = items
+    .filter((i) => !i.parentLineKey && (i.hierarchyLevel ?? 0) === 0)
+    .map((i) => i.displayOrder ?? 0);
+  return (orders.length ? Math.max(...orders) : 0) + 1;
+}
+
+export function nextChildDisplayOrder(items: InvoiceLineInput[], parentLineKey: string): number {
+  const orders = items
+    .filter((i) => i.parentLineKey === parentLineKey)
+    .map((i) => i.displayOrder ?? 0);
+  return (orders.length ? Math.max(...orders) : 0) + 1;
 }
 
 export function buildInvoiceHierarchy(items: InvoiceLineInput[]): HierarchicalInvoiceLine[] {
-  const parents = items
-    .filter((i) => !i.parentLineKey && (i.hierarchyLevel ?? 0) === 0)
-    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  const indexed = items.map((item, index) => ({ item, index }));
+  const parents = indexed
+    .filter(({ item }) => !item.parentLineKey && (item.hierarchyLevel ?? 0) === 0)
+    .sort((a, b) => {
+      const byOrder = (a.item.displayOrder ?? 0) - (b.item.displayOrder ?? 0);
+      return byOrder !== 0 ? byOrder : a.index - b.index;
+    })
+    .map(({ item }) => item);
 
-  const childrenByParent = new Map<string, InvoiceLineInput[]>();
-  items
-    .filter((i) => i.parentLineKey)
-    .forEach((child) => {
-      const key = child.parentLineKey!;
+  const childrenByParent = new Map<string, { item: InvoiceLineInput; index: number }[]>();
+  indexed
+    .filter(({ item }) => item.parentLineKey)
+    .forEach(({ item, index }) => {
+      const key = item.parentLineKey!;
       if (!childrenByParent.has(key)) childrenByParent.set(key, []);
-      childrenByParent.get(key)!.push(child);
+      childrenByParent.get(key)!.push({ item, index });
     });
 
   return parents.map((parent) => ({
     ...parent,
     children: (childrenByParent.get(parent.lineKey ?? '') ?? [])
-      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
-      .map((c) => ({ ...c })),
+      .sort((a, b) => {
+        const byOrder = (a.item.displayOrder ?? 0) - (b.item.displayOrder ?? 0);
+        return byOrder !== 0 ? byOrder : a.index - b.index;
+      })
+      .map(({ item }) => ({ ...item })),
   }));
 }
 
@@ -190,7 +333,7 @@ export function mapApiItemsToFormItems(
     gstAmount?: number;
     cgst?: number;
     sgst?: number;
-    parentInvoiceItemId?: number | null;
+    parentInvoiceItemId?: number;
     hierarchyLevel?: number;
     affectTotal?: boolean;
     taxable?: boolean;

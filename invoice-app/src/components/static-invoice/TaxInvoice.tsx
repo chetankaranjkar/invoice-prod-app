@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { ToWords } from 'to-words';
 import type { CompanyInfo, Customer, InvoiceItem, Payment } from '../../types';
+import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../../utils/invoiceCalculations';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDateFormat } from '../../hooks/useDateFormat';
 import StaticInvoiceHeader from './sections/header/StaticInvoiceHeader';
@@ -95,31 +96,24 @@ function TaxInvoice({
     },
   });
 
-  const totals = items.reduce(
-    (acc, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const rate = Number(item.rate) || 0;
-      const amount = Number(item.amount) || quantity * rate;
-      const gstPercentage = Number(item.gstPercentage) || 0;
-      const gstAmount = Number(item.gstAmount) || (amount * gstPercentage) / 100;
-      return {
-        totalAmount: acc.totalAmount + amount,
-        totalGST: acc.totalGST + gstAmount,
-        grandTotal: acc.grandTotal + (amount + gstAmount),
-      };
-    },
-    { totalAmount: 0, totalGST: 0, grandTotal: 0 }
-  );
+  const displayItems = useMemo(() => normalizeInvoiceItemsForRender(items), [items]);
+  const invoiceTotals = useMemo(() => calculateInvoiceTotals(displayItems), [displayItems]);
 
   const totalPaid = Number(initialPayment) || 0;
   const totalWave = Number(waveAmount) || 0;
-  const balanceAmount = Math.max(0, totals.grandTotal - totalPaid - totalWave);
-  const amountInWords = totals.grandTotal > 0 && !isNaN(totals.grandTotal)
-    ? toWords.convert(totals.grandTotal)
+  const balanceAmount = Math.max(0, invoiceTotals.grandTotal - totalPaid - totalWave);
+  const amountInWords = invoiceTotals.grandTotal > 0 && !isNaN(invoiceTotals.grandTotal)
+    ? toWords.convert(invoiceTotals.grandTotal)
     : 'Zero Rupees Only';
 
+  const totals = {
+    totalAmount: invoiceTotals.totalAmount,
+    totalGST: invoiceTotals.gstAmount,
+    grandTotal: invoiceTotals.grandTotal,
+  };
+
   return (
-    <div className="bg-white rounded-lg p-4 sm:p-6 md:p-8">
+    <div className="static-invoice bg-white rounded-lg p-4 sm:p-6 md:p-8">
       <StaticInvoiceHeader
         company={companyInfo}
         customer={customer}
@@ -127,7 +121,9 @@ function TaxInvoice({
         invoiceDate={invoiceDate}
         formattedInvoiceDate={formatDate(invoiceDate)}
       />
-      <StaticInvoiceItems items={items} />
+      <div className="my-2">
+        <StaticInvoiceItems items={displayItems} />
+      </div>
       <BankandCost
         company={companyInfo}
         totalAmount={totals.totalAmount}

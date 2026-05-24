@@ -15,6 +15,7 @@ import { useDateFormat } from '../hooks/useDateFormat';
 import { AddPaymentModal } from '../components/AddPaymentModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import { buildHtml2CanvasOnClone } from '../utils/pdfCapture';
 import jsPDF from 'jspdf';
 
 export const DashboardPage: React.FC = () => {
@@ -789,28 +790,22 @@ export const DashboardPage: React.FC = () => {
   const handleDownloadPdf = async () => {
     if (!previewRef.current) return;
 
+    const previewEl = previewRef.current;
+    previewEl.classList.add('pdf-export');
+
     try {
-      const canvas = await html2canvas(previewRef.current, {
+      const canvas = await html2canvas(previewEl, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        onclone: (clonedDoc) => {
-          const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
-          styleTags.forEach((tag) => {
-            if (tag.textContent) {
-              tag.textContent = tag.textContent
-                .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-            }
-          });
+        onclone: buildHtml2CanvasOnClone(previewEl, (clonedDoc) => {
           const pdfRoot = clonedDoc.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
           const fontTarget = pdfRoot ?? clonedDoc.body;
           if (fontTarget) {
             fontTarget.style.fontSize = '1.15em';
             fontTarget.style.lineHeight = '1.3';
           }
-        },
+        }),
       });
 
       const imgData = canvas.toDataURL('image/png');
@@ -853,6 +848,8 @@ export const DashboardPage: React.FC = () => {
       pdf.save(fileName);
     } catch (error: any) {
       alert(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
+    } finally {
+      previewEl.classList.remove('pdf-export');
     }
   };
 

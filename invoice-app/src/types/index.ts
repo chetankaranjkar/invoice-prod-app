@@ -350,6 +350,7 @@ export interface Product {
   inheritGstFromParent?: boolean;
   description?: string;
   isActive?: boolean;
+  displayOrder?: number;
   children?: Product[];
 }
 

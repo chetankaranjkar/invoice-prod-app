@@ -96,15 +96,10 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
             ? 'bg-[var(--primary-soft)] text-[var(--primary)] shadow-[inset_2px_0_0_0_var(--primary)]'
             : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
         )}
-        title={isCollapsed ? item.name : ''}
+        title={isCollapsed ? item.name : undefined}
       >
         <Icon className={cn('h-[18px] w-[18px] flex-shrink-0', !isCollapsed && 'mr-3')} />
         {!isCollapsed && <span className="truncate">{item.name}</span>}
-        {isCollapsed && (
-          <span className="pointer-events-none absolute left-full ml-3 px-2 py-1 rounded-md bg-slate-900 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-lg">
-            {item.name}
-          </span>
-        )}
       </button>
     );
   };
@@ -139,7 +134,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
         )}
       >
         {/* Brand / Header */}
-        <div className={cn('flex items-center border-b border-slate-200 h-16', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
+        <div className={cn('relative flex items-center border-b border-slate-200 h-16 shrink-0 overflow-visible', isCollapsed ? 'justify-center px-2' : 'justify-between px-4')}>
           {!isCollapsed ? (
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm shrink-0">
@@ -161,13 +156,15 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
           <button
             onClick={toggleCollapse}
             className={cn(
-              'hidden lg:flex p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-md transition-colors items-center justify-center',
-              isCollapsed && 'absolute -right-3 top-7 bg-white border border-slate-200 shadow-sm rounded-full p-1'
+              'hidden lg:flex text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors items-center justify-center',
+              isCollapsed
+                ? 'absolute right-0 top-1/2 z-50 h-5 w-5 -translate-y-1/2 translate-x-1/2 rounded-full bg-white border border-slate-200 shadow-sm p-0'
+                : 'p-1.5 rounded-md'
             )}
             title={isCollapsed ? 'Expand' : 'Collapse'}
             aria-label={isCollapsed ? 'Expand menu' : 'Collapse menu'}
           >
-            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
@@ -194,7 +191,10 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
         )}
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto py-3 px-3">
+        <nav className={cn(
+          'flex-1 min-h-0 py-3',
+          isCollapsed ? 'overflow-hidden px-2' : 'overflow-y-auto overflow-x-hidden px-3'
+        )}>
           {!isCollapsed && (
             <p className="px-2 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Main</p>
           )}
@@ -217,7 +217,7 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
         </nav>
 
         {/* Bottom: theme + user */}
-        <div className="border-t border-slate-200 p-3 space-y-2">
+        <div className={cn('border-t border-slate-200 shrink-0', isCollapsed ? 'p-2 space-y-1.5' : 'p-3 space-y-2')}>
           <div className={cn(isCollapsed && 'flex justify-center')}>
             <ThemeSelector isCollapsed={isCollapsed} />
           </div>
@@ -231,7 +231,10 @@ export const Navigation: React.FC<NavigationProps> = ({ onLogout }) => {
               )}
               title={isCollapsed ? userName : ''}
             >
-              <div className="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-semibold shrink-0 shadow-sm">
+              <div className={cn(
+                'rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-xs font-semibold shrink-0 shadow-sm',
+                isCollapsed ? 'h-8 w-8' : 'h-9 w-9'
+              )}>
                 {initials || <UserIcon className="h-4 w-4" />}
               </div>
               {!isCollapsed && (

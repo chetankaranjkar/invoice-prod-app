@@ -64,7 +64,8 @@ namespace InvoiceApp.Infrastructure.Repositories
             return await _context.Products
                 .AsNoTracking()
                 .Where(p => p.UserId == userId && p.ParentProductId == parentId && p.IsActive)
-                .OrderBy(p => p.Name)
+                .OrderBy(p => p.DisplayOrder)
+                .ThenBy(p => p.Name)
                 .ToListAsync();
         }
 
@@ -125,6 +126,24 @@ namespace InvoiceApp.Infrastructure.Repositories
             _context.Products.Remove(product);
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<List<Product>> GetByIdsAsync(Guid userId, IEnumerable<int> ids)
+        {
+            var idList = ids.Distinct().ToList();
+            return await _context.Products
+                .Where(p => p.UserId == userId && idList.Contains(p.Id))
+                .ToListAsync();
+        }
+
+        public async Task UpdateRangeAsync(IEnumerable<Product> products)
+        {
+            foreach (var product in products)
+            {
+                product.UpdatedAt = DateTime.UtcNow;
+            }
+            _context.Products.UpdateRange(products);
+            await _context.SaveChangesAsync();
         }
     }
 }

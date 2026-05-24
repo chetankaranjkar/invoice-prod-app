@@ -15,5 +15,7 @@ namespace InvoiceApp.Application.Interfaces
         Task<Product> AddAsync(Product product);
         Task<Product> UpdateAsync(Product product);
         Task<bool> DeleteAsync(int id, Guid userId);
+        Task<List<Product>> GetByIdsAsync(Guid userId, IEnumerable<int> ids);
+        Task UpdateRangeAsync(IEnumerable<Product> products);
     }
 }

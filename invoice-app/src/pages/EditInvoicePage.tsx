@@ -7,8 +7,12 @@ import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
 import type { Customer, UpdateInvoiceDto, InvoiceItem, PaymentStatus, Invoice, InvoiceLayoutConfigDto } from '../types';
-import { calculateGST, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
-import { mapApiItemsToFormItems, calculateInvoiceTotals } from '../utils/invoiceCalculations';
+import { sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
+import {
+  mapApiItemsToFormItems,
+  calculateInvoiceTotals,
+  formItemsToPreviewInvoiceItems,
+} from '../utils/invoiceCalculations';
 
 export const EditInvoicePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -92,7 +96,9 @@ export const EditInvoicePage: React.FC = () => {
       const formItems = mapApiItemsToFormItems(invoiceData.items || []);
       calculateInvoiceTotals(formItems);
       setItems(formItems);
-      setInvoiceItems(invoiceData.items || []);
+      setInvoiceItems(
+        formItemsToPreviewInvoiceItems(mapApiItemsToFormItems(invoiceData.items || []))
+      );
     } catch (error: any) {
       console.error('Failed to load invoice:', error);
       alert(`Failed to load invoice: ${error.response?.data?.message || 'Please try again.'}`);
@@ -148,31 +154,8 @@ export const EditInvoicePage: React.FC = () => {
     setSelectedCustomer(customer);
   };
 
-  // Update preview items whenever items state changes
   useEffect(() => {
-    const previewItems: InvoiceItem[] = items
-      .filter(item => item.productName && item.quantity && item.rate)
-      .map((item, index) => {
-        const quantity = Number(item.quantity) || 0;
-        const rate = Number(item.rate) || 0;
-        const gstPercentage = Number(item.gstPercentage) || 0;
-        const amount = quantity * rate;
-        const { gstAmount, cgst, sgst } = calculateGST(amount, gstPercentage);
-
-        return {
-          id: index,
-          productName: item.productName!,
-          quantity: quantity,
-          rate: rate,
-          amount: amount,
-          gstPercentage: gstPercentage,
-          gstAmount: gstAmount,
-          cgst: cgst,
-          sgst: sgst,
-        };
-      });
-
-    setInvoiceItems(previewItems);
+    setInvoiceItems(formItemsToPreviewInvoiceItems(items));
   }, [items]);
 
   // MasterUser cannot edit invoices

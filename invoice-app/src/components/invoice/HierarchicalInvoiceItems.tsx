@@ -14,15 +14,26 @@ import {
   buildInvoiceHierarchy,
   calculateInvoiceTotals,
   createLineKey,
+  nextChildDisplayOrder,
+  nextParentDisplayOrder,
   productToInvoiceLine,
 } from '../../utils/invoiceCalculations';
 import type { InvoiceLineInput } from '../../utils/invoiceCalculations';
+
+const parentFieldBorder =
+  '!border-blue-600 focus:!border-blue-600 focus:ring-blue-500';
+const childFieldBorder =
+  '!border-sky-300 focus:!border-sky-400 focus:ring-sky-300';
+const parentInputClass = `w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${parentFieldBorder}`;
+const childInputClass = `w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${childFieldBorder}`;
 
 interface HierarchicalInvoiceItemsProps {
   items: Partial<InvoiceItem>[];
   setItems: React.Dispatch<React.SetStateAction<Partial<InvoiceItem>[]>>;
   disableQuantity: boolean;
   defaultGstPercentage: number;
+  /** When true (profile GST = 0), hide GST column in the line items table */
+  hideGst?: boolean;
   onTotalsChange?: () => void;
 }
 
@@ -31,8 +42,10 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
   setItems,
   disableQuantity,
   defaultGstPercentage,
+  hideGst = false,
   onTotalsChange,
 }) => {
+  const productColClass = hideGst ? 'min-w-[320px] w-[55%]' : 'min-w-[200px] w-[32%]';
   const hierarchy = useMemo(
     () => buildInvoiceHierarchy(items as InvoiceLineInput[]),
     [items]
@@ -79,6 +92,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
 
   const addParentLine = () => {
     recalcAll([
+      ...items,
       {
         lineKey: createLineKey(),
         productName: '',
@@ -89,9 +103,8 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
         taxable: true,
         hierarchyLevel: 0,
         showOnInvoice: true,
-        displayOrder: items.length + 1,
+        displayOrder: nextParentDisplayOrder(items as InvoiceLineInput[]),
       },
-      ...items,
     ]);
   };
 
@@ -109,7 +122,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
         taxable: false,
         hierarchyLevel: 1,
         showOnInvoice: true,
-        displayOrder: items.length + 1,
+        displayOrder: nextChildDisplayOrder(items as InvoiceLineInput[], parentLineKey),
       },
     ]);
   };
@@ -142,11 +155,11 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
   const renderSubRow = (child: InvoiceLineInput, parentGst: number) => {
     const lineKey = child.lineKey!;
     return (
-      <tr key={lineKey} className="bg-slate-50/80 border-b border-slate-100">
+      <tr key={lineKey} className="bg-sky-50/50 border-b border-sky-100">
         <td className="w-8 pl-8">
           <span className="text-slate-300 font-mono text-xs">└</span>
         </td>
-        <td className="py-2 pr-2">
+        <td className={`py-2 pr-2 ${productColClass}`}>
           <ProductAutocomplete
             value={child.productName || ''}
             onChange={(name, product) => {
@@ -160,6 +173,10 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
               }
             }}
             parentOnly={false}
+            className={childFieldBorder}
+            focusRing="focus:ring-sky-300"
+            hideGstInSuggestions={hideGst}
+            placeholder="Select sub-product…"
           />
         </td>
         {!disableQuantity && (
@@ -169,7 +186,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
               min={1}
               value={child.quantity ?? 1}
               onChange={(e) => updateLine(lineKey, 'quantity', Number(e.target.value))}
-              className="w-full px-2 py-1 text-sm border rounded"
+              className={childInputClass}
             />
           </td>
         )}
@@ -180,23 +197,27 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
             step="0.01"
             value={child.rate ?? 0}
             onChange={(e) => updateLine(lineKey, 'rate', Number(e.target.value))}
-            className="w-full px-2 py-1 text-sm border rounded"
+            className={childInputClass}
           />
         </td>
-        <td className="py-2 w-20">
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={child.gstPercentage ?? 0}
-            onChange={(e) => updateLine(lineKey, 'gstPercentage', Number(e.target.value))}
-            className="w-full px-2 py-1 text-sm border rounded"
-            disabled={child.taxable === false}
-          />
-        </td>
-        <td className="py-2 w-24 text-right text-sm tabular-nums text-slate-600">
-          {child.affectTotal ? `₹${(child.amount ?? 0).toFixed(2)}` : '—'}
-        </td>
+        {!hideGst && (
+          <td className="py-2 w-20">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={child.gstPercentage ?? 0}
+              onChange={(e) => updateLine(lineKey, 'gstPercentage', Number(e.target.value))}
+              className={childInputClass}
+              disabled={child.taxable === false}
+            />
+          </td>
+        )}
+        {!hideGst && (
+          <td className="py-2 w-24 text-right text-sm tabular-nums text-slate-600">
+            {child.affectTotal ? `₹${(child.amount ?? 0).toFixed(2)}` : '—'}
+          </td>
+        )}
         <td className="py-2 w-20">
           <div className="flex gap-1 justify-end">
             <button
@@ -232,11 +253,11 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
           <thead className="bg-slate-100 text-xs uppercase text-slate-600">
             <tr>
               <th className="w-8" />
-              <th className="text-left py-2 px-2">Product</th>
+              <th className={`text-left py-2 px-2 ${productColClass}`}>Product</th>
               {!disableQuantity && <th className="w-20 py-2">Qty</th>}
               <th className="w-24 py-2">Rate</th>
-              <th className="w-20 py-2">GST %</th>
-              <th className="w-24 py-2 text-right">Line</th>
+              {!hideGst && <th className="w-20 py-2">GST %</th>}
+              {!hideGst && <th className="w-24 py-2 text-right">Line</th>}
               <th className="w-20 py-2" />
             </tr>
           </thead>
@@ -247,7 +268,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
               const hasChildren = (parent.children?.length ?? 0) > 0;
               return (
                 <React.Fragment key={lineKey}>
-                  <tr className="border-b border-slate-200 bg-white">
+                  <tr className="border-b border-blue-100 bg-white">
                     <td className="py-2 pl-2">
                       {hasChildren ? (
                         <button type="button" onClick={() => toggleCollapse(lineKey)} className="text-slate-500">
@@ -255,7 +276,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
                         </button>
                       ) : null}
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className={`py-2 pr-2 ${productColClass}`}>
                       <ProductAutocomplete
                         value={parent.productName || ''}
                         onChange={(name, product) => {
@@ -263,10 +284,11 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
                           else updateLine(lineKey, 'productName', name);
                         }}
                         parentOnly
+                        className={parentFieldBorder}
+                        focusRing="focus:ring-blue-500"
+                        hideGstInSuggestions={hideGst}
+                        placeholder="Select product…"
                       />
-                      <span className="inline-block mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
-                        Parent · bills total
-                      </span>
                     </td>
                     {!disableQuantity && (
                       <td className="py-2">
@@ -275,7 +297,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
                           min={1}
                           value={parent.quantity ?? 1}
                           onChange={(e) => updateLine(lineKey, 'quantity', Number(e.target.value))}
-                          className="w-full px-2 py-1 text-sm border rounded"
+                          className={parentInputClass}
                         />
                       </td>
                     )}
@@ -286,20 +308,24 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
                         step="0.01"
                         value={parent.rate ?? 0}
                         onChange={(e) => updateLine(lineKey, 'rate', Number(e.target.value))}
-                        className="w-full px-2 py-1 text-sm border rounded font-semibold"
+                        className={`${parentInputClass} font-semibold`}
                       />
                     </td>
-                    <td className="py-2">
-                      <input
-                        type="number"
-                        value={parent.gstPercentage ?? defaultGstPercentage}
-                        onChange={(e) => updateLine(lineKey, 'gstPercentage', Number(e.target.value))}
-                        className="w-full px-2 py-1 text-sm border rounded"
-                      />
-                    </td>
-                    <td className="py-2 text-right font-semibold tabular-nums">
-                      ₹{(parent.amount ?? 0).toFixed(2)}
-                    </td>
+                    {!hideGst && (
+                      <td className="py-2">
+                        <input
+                          type="number"
+                          value={parent.gstPercentage ?? defaultGstPercentage}
+                          onChange={(e) => updateLine(lineKey, 'gstPercentage', Number(e.target.value))}
+                          className={parentInputClass}
+                        />
+                      </td>
+                    )}
+                    {!hideGst && (
+                      <td className="py-2 text-right font-semibold tabular-nums">
+                        ₹{(parent.amount ?? 0).toFixed(2)}
+                      </td>
+                    )}
                     <td className="py-2">
                       <div className="flex gap-1 justify-end">
                         <button

@@ -1,13 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { Customer, InvoiceItem, CompanyInfo, Payment } from '../types';
 import { api } from '../services/agent';
 import { ToWords } from 'to-words';
 import html2canvas from 'html2canvas';
+import {
+  buildHtml2CanvasOnClone,
+  convertClonedImagesToDataUrls,
+  inlineComputedColors,
+} from '../utils/pdfCapture';
 import jsPDF from 'jspdf';
 import { Printer, Download } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDateFormat } from '../hooks/useDateFormat';
 import { resolveAssetUrl } from '../utils/helpers';
+import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../utils/invoiceCalculations';
+import { InvoiceHierarchyRows } from './invoice/InvoiceHierarchyRows';
 
 interface InvoicePreviewProps {
   customer: Customer | null;
@@ -168,23 +175,13 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
     }
   };
 
-  const totals = items.reduce(
-    (acc, item) => {
-      // Calculate amount from quantity × rate if amount is 0 or missing
-      const quantity = Number(item.quantity) || 0;
-      const rate = Number(item.rate) || 0;
-      const amount = Number(item.amount) || (quantity * rate);
-      const gstPercentage = Number(item.gstPercentage) || 0;
-      const gstAmount = Number(item.gstAmount) || (amount * gstPercentage / 100);
-
-      return {
-        totalAmount: acc.totalAmount + amount,
-        totalGST: acc.totalGST + gstAmount,
-        grandTotal: acc.grandTotal + (amount + gstAmount),
-      };
-    },
-    { totalAmount: 0, totalGST: 0, grandTotal: 0 }
-  );
+  const displayItems = useMemo(() => normalizeInvoiceItemsForRender(items), [items]);
+  const invoiceTotals = useMemo(() => calculateInvoiceTotals(displayItems), [displayItems]);
+  const totals = {
+    totalAmount: invoiceTotals.totalAmount,
+    totalGST: invoiceTotals.gstAmount,
+    grandTotal: invoiceTotals.grandTotal,
+  };
 
   // Use invoice's paidAmount and waveAmount directly (from database)
   const totalPaid = Number(initialPayment) || 0; // Actual payment received
@@ -257,10 +254,14 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                 height: 35mm !important;
                 align-items: flex-start !important;
               }
-              table {
+              table:not(.invoice-description-table) {
                 min-height: 0 !important;
                 height: auto !important;
                 font-size: 9px !important;
+              }
+              .invoice-description-table-wrap {
+                min-height: 0 !important;
+                height: auto !important;
               }
               tbody {
                 min-height: 0 !important;
@@ -272,9 +273,6 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               }
               tbody td {
                 vertical-align: top !important;
-              }
-              tbody tr:last-child {
-                height: auto;
               }
               .invoice-table .text-xs, .invoice-table .text-sm {
                 font-size: 9px !important;
@@ -438,183 +436,16 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       // Small delay to ensure rendering is complete
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Pre-process element: Convert all computed colors to inline RGB/hex styles
-      // This prevents html2canvas from encountering unsupported oklch()/oslch() color functions
-      const convertColorsToRGB = (element: HTMLElement) => {
-        const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
+      // Inline computed RGB colors before capture (Tailwind v4 uses oklab in stylesheets)
+      inlineComputedColors(invoiceElement, invoiceElement);
 
-        // Helper function to convert any color format to RGB/hex
-        const convertToRGB = (colorValue: string): string | null => {
-          if (!colorValue || colorValue === 'transparent' || colorValue === 'rgba(0, 0, 0, 0)') {
-            return null;
-          }
-
-          // Reject any modern color functions - these should have been converted by browser
-          if (typeof colorValue === 'string' && 
-              (colorValue.includes('oklch') || colorValue.includes('oslch') || colorValue.includes('oklab'))) {
-            // If we still see oklch, skip it - browser should have converted it
-            return null;
-          }
-
-          // If already RGB/RGBA/hex, return as is
-          if (colorValue.startsWith('rgb') || colorValue.startsWith('#') || colorValue.startsWith('hsl')) {
-            return colorValue;
-          }
-
-          // For any other format, return null (skip it)
-          return null;
-        };
-
-        allElements.forEach((htmlEl) => {
-          try {
-            const computedStyle = window.getComputedStyle(htmlEl);
-
-            // Get all color-related properties
-            const bgColor = computedStyle.backgroundColor;
-            const textColor = computedStyle.color;
-            const borderTopColor = computedStyle.borderTopColor;
-            const borderRightColor = computedStyle.borderRightColor;
-            const borderBottomColor = computedStyle.borderBottomColor;
-            const borderLeftColor = computedStyle.borderLeftColor;
-            const outlineColor = computedStyle.outlineColor;
-
-            // Convert and set background color
-            if (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent') {
-              const rgbColor = convertToRGB(bgColor);
-              if (rgbColor) {
-                htmlEl.style.backgroundColor = rgbColor;
-              }
-            }
-
-            // Convert and set text color
-            if (textColor && textColor !== 'rgba(0, 0, 0, 0)') {
-              const rgbColor = convertToRGB(textColor);
-              if (rgbColor) {
-                htmlEl.style.color = rgbColor;
-              }
-            }
-
-            // Convert and set border colors
-            const borderWidth = computedStyle.borderWidth;
-            if (borderWidth && borderWidth !== '0px') {
-              if (borderTopColor && borderTopColor !== 'rgba(0, 0, 0, 0)') {
-                const rgbColor = convertToRGB(borderTopColor);
-                if (rgbColor) {
-                  htmlEl.style.borderTopColor = rgbColor;
-                }
-              }
-              if (borderRightColor && borderRightColor !== 'rgba(0, 0, 0, 0)') {
-                const rgbColor = convertToRGB(borderRightColor);
-                if (rgbColor) {
-                  htmlEl.style.borderRightColor = rgbColor;
-                }
-              }
-              if (borderBottomColor && borderBottomColor !== 'rgba(0, 0, 0, 0)') {
-                const rgbColor = convertToRGB(borderBottomColor);
-                if (rgbColor) {
-                  htmlEl.style.borderBottomColor = rgbColor;
-                }
-              }
-              if (borderLeftColor && borderLeftColor !== 'rgba(0, 0, 0, 0)') {
-                const rgbColor = convertToRGB(borderLeftColor);
-                if (rgbColor) {
-                  htmlEl.style.borderLeftColor = rgbColor;
-                }
-              }
-            }
-
-            // Convert outline color if present
-            if (outlineColor && outlineColor !== 'rgba(0, 0, 0, 0)') {
-              const rgbColor = convertToRGB(outlineColor);
-              if (rgbColor) {
-                htmlEl.style.outlineColor = rgbColor;
-              }
-            }
-          } catch (err) {
-            // Silently continue if conversion fails for this element
-            if (process.env.NODE_ENV === 'development') {
-              console.warn('Failed to convert color for element:', err);
-            }
-          }
-        });
-      };
-
-      // Pre-process the element before html2canvas processes it
-      // Convert all colors to RGB/hex format
-      convertColorsToRGB(invoiceElement);
-      
-      // Additional pass: Force conversion of any remaining color functions
-      // by reading computed styles and setting them as inline styles
-      const forceColorConversion = (element: HTMLElement) => {
-        const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-        allElements.forEach((el) => {
-          try {
-            const style = window.getComputedStyle(el);
-            
-            // Convert all color properties to RGB/hex
-            const colorProps = [
-              'backgroundColor', 'color', 'borderTopColor', 'borderRightColor',
-              'borderBottomColor', 'borderLeftColor', 'borderColor', 'outlineColor'
-            ];
-            
-            colorProps.forEach((prop) => {
-              const value = (style as any)[prop];
-              if (value && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent') {
-                // Reject any modern color functions - computed styles should be RGB
-                if (typeof value === 'string' && 
-                    (value.includes('oklch') || value.includes('oslch') || value.includes('oklab'))) {
-                  // Skip - this shouldn't happen with computed styles, but just in case
-                  return;
-                }
-                // Set as inline style (computed styles are already RGB/hex)
-                (el.style as any)[prop] = value;
-              }
-            });
-          } catch (e) {
-            // Ignore errors
-          }
-        });
-      };
-      
-      // Run conversion multiple times to ensure all colors are converted
-      convertColorsToRGB(invoiceElement);
-      forceColorConversion(invoiceElement);
-      
-      // Wait a bit for styles to apply
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Run one more time to catch any remaining colors
-      convertColorsToRGB(invoiceElement);
-      forceColorConversion(invoiceElement);
-      
-      // Final pass: Remove any Tailwind classes that might use oklch and replace with inline styles
-      const removeOklchClasses = (element: HTMLElement) => {
-        const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-        allElements.forEach((el) => {
-          try {
-            // Get computed styles one more time to ensure they're RGB
-            const style = window.getComputedStyle(el);
-            const bg = style.backgroundColor;
-            const color = style.color;
-            const border = style.borderColor;
-            
-            // Only set if they're valid RGB/hex values
-            if (bg && !bg.includes('oklch') && !bg.includes('oslch') && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-              el.style.backgroundColor = bg;
-            }
-            if (color && !color.includes('oklch') && !color.includes('oslch') && color !== 'rgba(0, 0, 0, 0)') {
-              el.style.color = color;
-            }
-            if (border && !border.includes('oklch') && !border.includes('oslch') && border !== 'rgba(0, 0, 0, 0)') {
-              el.style.borderColor = border;
-            }
-          } catch (e) {
-            // Ignore errors
-          }
-        });
-      };
-      
-      removeOklchClasses(invoiceElement);
+      const invoicePdfOnClone = buildHtml2CanvasOnClone(invoiceElement, async (clonedDoc, element) => {
+        const pdfRoot = element.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
+        const fontTarget = pdfRoot ?? element;
+        fontTarget.style.fontSize = '1.15em';
+        fontTarget.style.lineHeight = '1.3';
+        await convertClonedImagesToDataUrls(invoiceElement, clonedDoc);
+      });
 
       // Capture the invoice as canvas with high quality
       // Try with CORS first, fallback to allowTaint if CORS fails
@@ -630,159 +461,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           windowWidth: invoiceElement.scrollWidth,
           windowHeight: invoiceElement.scrollHeight,
           removeContainer: false,
-          onclone: async (clonedDoc, element) => {
-            const sanitizeStyleTags = (doc: Document) => {
-              const styleTags = Array.from(doc.querySelectorAll('style'));
-              styleTags.forEach((tag) => {
-                if (tag.textContent && (tag.textContent.includes('oklch') || tag.textContent.includes('oklab') || tag.textContent.includes('oslch'))) {
-                  tag.textContent = tag.textContent
-                    .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-                }
-              });
-            };
-
-            const sanitizeInlineStyles = (root: HTMLElement) => {
-              const allElements = [root, ...Array.from(root.querySelectorAll('*'))] as HTMLElement[];
-              allElements.forEach((el) => {
-                const styleAttr = el.getAttribute('style');
-                if (styleAttr && (styleAttr.includes('oklch') || styleAttr.includes('oklab') || styleAttr.includes('oslch'))) {
-                  const cleaned = styleAttr
-                    .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-                  el.setAttribute('style', cleaned);
-                }
-              });
-            };
-
-            sanitizeStyleTags(clonedDoc);
-            sanitizeInlineStyles(element);
-            const pdfRoot = element.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
-            const fontTarget = pdfRoot ?? element;
-            fontTarget.style.fontSize = '1.15em';
-            fontTarget.style.lineHeight = '1.3';
-
-            // Convert modern color functions to RGB in the cloned document
-            const convertColorsInClone = (el: HTMLElement) => {
-              const allElements = [el, ...Array.from(el.querySelectorAll('*'))] as HTMLElement[];
-              allElements.forEach((elem) => {
-                try {
-                  const style = window.getComputedStyle(elem);
-                  
-                  // Convert all color properties
-                  const colorProps = [
-                    'backgroundColor', 'color', 'borderTopColor', 'borderRightColor',
-                    'borderBottomColor', 'borderLeftColor', 'borderColor', 'outlineColor'
-                  ];
-                  
-                  colorProps.forEach((prop) => {
-                    const value = (style as any)[prop];
-                    if (value && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent') {
-                      // Only set if it's already RGB/hex (computed styles should be)
-                      if (typeof value === 'string' && 
-                          !value.includes('oklch') && 
-                          !value.includes('oslch') && 
-                          !value.includes('oklab')) {
-                        (elem.style as any)[prop] = value;
-                      }
-                    }
-                  });
-                } catch (e) {
-                  // Ignore errors
-                }
-              });
-            };
-            
-            convertColorsInClone(element);
-            
-            // Wait for styles to apply
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            // Run again to ensure all colors are converted
-            convertColorsInClone(element);
-            
-            // Final pass: Remove any oklch references from inline styles
-            const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-            allElements.forEach((elem) => {
-              try {
-                const style = window.getComputedStyle(elem);
-                // Force set computed colors as inline styles (they should be RGB by now)
-                if (style.backgroundColor && !style.backgroundColor.includes('oklch') && !style.backgroundColor.includes('oslch')) {
-                  elem.style.backgroundColor = style.backgroundColor;
-                }
-                if (style.color && !style.color.includes('oklch') && !style.color.includes('oslch')) {
-                  elem.style.color = style.color;
-                }
-                if (style.borderColor && !style.borderColor.includes('oklch') && !style.borderColor.includes('oslch')) {
-                  elem.style.borderColor = style.borderColor;
-                }
-              } catch (e) {
-                // Ignore errors
-              }
-            });
-
-            const clonedImages = clonedDoc.querySelectorAll('img');
-            const imagePromises = Array.from(clonedImages).map(async (img: HTMLImageElement) => {
-              if (!img.src || img.src.startsWith('data:') || img.src.startsWith('blob:')) {
-                return; // Skip data URLs and blob URLs
-              }
-
-              try {
-                // Get the original image from the source document
-                const originalImages = invoiceElement.querySelectorAll('img');
-                const originalImg = Array.from(originalImages || []).find(
-                  orig => orig.src === img.src || orig.getAttribute('src') === img.getAttribute('src')
-                ) as HTMLImageElement;
-
-                // If original image is loaded, convert it to data URL for the clone
-                if (originalImg && originalImg.complete && originalImg.naturalWidth > 0 && originalImg.naturalHeight > 0) {
-                  try {
-                    // Create a canvas to convert the image to data URL
-                    const canvas = document.createElement('canvas');
-                    canvas.width = originalImg.naturalWidth;
-                    canvas.height = originalImg.naturalHeight;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                      ctx.drawImage(originalImg, 0, 0);
-                      const dataUrl = canvas.toDataURL('image/png');
-                      img.src = dataUrl;
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('Converted image to data URL for PDF:', img.src.substring(0, 50) + '...');
-                      }
-                      return;
-                    }
-                  } catch (canvasError) {
-                    if (process.env.NODE_ENV === 'development') {
-                      console.warn('Failed to convert image to data URL, trying direct load:', canvasError);
-                    }
-                  }
-                }
-
-                // Fallback: Set crossOrigin and ensure image loads
-                img.crossOrigin = 'anonymous';
-                img.style.display = '';
-
-                // Force reload the image
-                const originalSrc = img.src;
-                img.src = '';
-                await new Promise(resolve => setTimeout(resolve, 10));
-                img.src = originalSrc;
-
-              } catch (err) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn('Error handling cloned image:', err);
-                }
-              }
-            });
-
-            // Wait for all images to be processed
-            await Promise.all(imagePromises);
-
-            // Additional wait to ensure images are loaded in the clone
-            await new Promise(resolve => setTimeout(resolve, 200));
-          },
+          onclone: invoicePdfOnClone,
         });
       } catch (corsError) {
         // Fallback: If CORS fails, try with allowTaint (images may be tainted)
@@ -798,152 +477,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           windowWidth: invoiceElement.scrollWidth,
           windowHeight: invoiceElement.scrollHeight,
           removeContainer: false,
-          onclone: async (clonedDoc, element) => {
-            const sanitizeStyleTags = (doc: Document) => {
-              const styleTags = Array.from(doc.querySelectorAll('style'));
-              styleTags.forEach((tag) => {
-                if (tag.textContent && (tag.textContent.includes('oklch') || tag.textContent.includes('oklab') || tag.textContent.includes('oslch'))) {
-                  tag.textContent = tag.textContent
-                    .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-                }
-              });
-            };
-
-            const sanitizeInlineStyles = (root: HTMLElement) => {
-              const allElements = [root, ...Array.from(root.querySelectorAll('*'))] as HTMLElement[];
-              allElements.forEach((el) => {
-                const styleAttr = el.getAttribute('style');
-                if (styleAttr && (styleAttr.includes('oklch') || styleAttr.includes('oklab') || styleAttr.includes('oslch'))) {
-                  const cleaned = styleAttr
-                    .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                    .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-                  el.setAttribute('style', cleaned);
-                }
-              });
-            };
-
-            sanitizeStyleTags(clonedDoc);
-            sanitizeInlineStyles(element);
-
-            // Convert modern color functions to RGB in the cloned document (fallback)
-            const convertColorsInClone = (el: HTMLElement) => {
-              const allElements = [el, ...Array.from(el.querySelectorAll('*'))] as HTMLElement[];
-              allElements.forEach((elem) => {
-                try {
-                  const style = window.getComputedStyle(elem);
-                  
-                  // Convert all color properties
-                  const colorProps = [
-                    'backgroundColor', 'color', 'borderTopColor', 'borderRightColor',
-                    'borderBottomColor', 'borderLeftColor', 'borderColor', 'outlineColor'
-                  ];
-                  
-                  colorProps.forEach((prop) => {
-                    const value = (style as any)[prop];
-                    if (value && value !== 'rgba(0, 0, 0, 0)' && value !== 'transparent') {
-                      // Only set if it's already RGB/hex (computed styles should be)
-                      if (typeof value === 'string' && 
-                          !value.includes('oklch') && 
-                          !value.includes('oslch') && 
-                          !value.includes('oklab')) {
-                        (elem.style as any)[prop] = value;
-                      }
-                    }
-                  });
-                } catch (e) {
-                  // Ignore errors
-                }
-              });
-            };
-            
-            convertColorsInClone(element);
-            
-            // Wait for styles to apply
-            await new Promise(resolve => setTimeout(resolve, 50));
-            
-            // Run again to ensure all colors are converted
-            convertColorsInClone(element);
-            
-            // Final pass: Remove any oklch references from inline styles
-            const allElements = [element, ...Array.from(element.querySelectorAll('*'))] as HTMLElement[];
-            allElements.forEach((elem) => {
-              try {
-                const style = window.getComputedStyle(elem);
-                // Force set computed colors as inline styles (they should be RGB by now)
-                if (style.backgroundColor && !style.backgroundColor.includes('oklch') && !style.backgroundColor.includes('oslch')) {
-                  elem.style.backgroundColor = style.backgroundColor;
-                }
-                if (style.color && !style.color.includes('oklch') && !style.color.includes('oslch')) {
-                  elem.style.color = style.color;
-                }
-                if (style.borderColor && !style.borderColor.includes('oklch') && !style.borderColor.includes('oslch')) {
-                  elem.style.borderColor = style.borderColor;
-                }
-              } catch (e) {
-                // Ignore errors
-              }
-            });
-
-            const clonedImages = clonedDoc.querySelectorAll('img');
-            const imagePromises = Array.from(clonedImages).map(async (img: HTMLImageElement) => {
-              if (!img.src || img.src.startsWith('data:') || img.src.startsWith('blob:')) {
-                return; // Skip data URLs and blob URLs
-              }
-
-              try {
-                // Get the original image from the source document
-                const originalImages = invoiceElement.querySelectorAll('img');
-                const originalImg = Array.from(originalImages || []).find(
-                  orig => orig.src === img.src || orig.getAttribute('src') === img.getAttribute('src')
-                ) as HTMLImageElement;
-
-                // If original image is loaded, convert it to data URL for the clone
-                if (originalImg && originalImg.complete && originalImg.naturalWidth > 0 && originalImg.naturalHeight > 0) {
-                  try {
-                    // Create a canvas to convert the image to data URL
-                    const canvas = document.createElement('canvas');
-                    canvas.width = originalImg.naturalWidth;
-                    canvas.height = originalImg.naturalHeight;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                      ctx.drawImage(originalImg, 0, 0);
-                      const dataUrl = canvas.toDataURL('image/png');
-                      img.src = dataUrl;
-                      if (process.env.NODE_ENV === 'development') {
-                        console.log('Converted image to data URL for PDF (fallback):', img.src.substring(0, 50) + '...');
-                      }
-                      return;
-                    }
-                  } catch (canvasError) {
-                    if (process.env.NODE_ENV === 'development') {
-                      console.warn('Failed to convert image to data URL, trying direct load:', canvasError);
-                    }
-                  }
-                }
-
-                // Fallback: Ensure image is visible and try to load
-                img.style.display = '';
-                const originalSrc = img.src;
-                img.src = '';
-                await new Promise(resolve => setTimeout(resolve, 10));
-                img.src = originalSrc;
-
-              } catch (err) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn('Error handling cloned image (fallback):', err);
-                }
-              }
-            });
-
-            // Wait for all images to be processed
-            await Promise.all(imagePromises);
-
-            // Additional wait to ensure images are loaded in the clone
-            await new Promise(resolve => setTimeout(resolve, 200));
-          },
+          onclone: invoicePdfOnClone,
         });
       }
 
@@ -1184,87 +718,35 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
           </div>
         </div>
         <div className="overflow-x-auto -mx-2 sm:mx-0">
-          <table className="invoice-table w-full text-left border-collapse text-[10px] sm:text-xs md:text-sm" style={{ minHeight: '40vh' }}>
-            <thead>
-              <tr className="bg-[#d1d5dc]">
-                <th className="border px-1 py-1 w-[5%]">Index</th>
-                <th className="border px-1 sm:px-2 py-1">Particular</th>
-                <th className="border px-1 py-1 w-[15%] text-center">Amount</th>
-              </tr>
-            </thead>
-            <tbody style={items.length === 0 ? { minHeight: '50vh' } : { verticalAlign: 'top' }}>
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="border px-2 py-4 text-center text-[#6b7280]" style={{ height: '50vh', verticalAlign: 'middle' }}>
-                    <div className="flex items-center justify-center h-full">
-                      No items added yet. Add items in the form to see them here.
-                    </div>
+          <div className="invoice-description-table-wrap invoice-hierarchy-table-wrap w-full rounded-lg overflow-hidden border border-[#d1d5db]">
+            <table className="invoice-table invoice-description-table invoice-hierarchy-table w-full h-auto text-left border-collapse text-[10px] sm:text-xs md:text-sm table-fixed">
+              <thead>
+                <tr className="bg-[#d1d5dc]">
+                  <th className="border px-1 py-1 w-[5%]">Index</th>
+                  <th className="border px-1 sm:px-2 py-1">Particular</th>
+                  <th className="border px-1 py-1 w-[15%] text-center">Amount</th>
+                </tr>
+              </thead>
+              <tbody style={{ verticalAlign: 'top' }}>
+                <InvoiceHierarchyRows
+                  items={displayItems}
+                  variant="preview"
+                  emptyMessage="No items added yet. Add items in the form to see them here."
+                  renderOptions={{ showSubItems: true, hideZeroCostSubs: false }}
+                />
+              </tbody>
+              <tfoot>
+                <tr className="bg-[#d1d5dc]">
+                  <td className="border px-1 py-2" colSpan={2}><strong>Total</strong></td>
+                  <td className="border px-1 py-2 text-center">
+                    <strong>
+                      ₹{(totals.grandTotal || 0).toFixed(2)}
+                    </strong>
                   </td>
                 </tr>
-              ) : (
-                items.map((item, index) => {
-                  // Calculate amount from quantity × rate if amount is 0 or missing
-                  const quantity = Number(item.quantity) || 0;
-                  const rate = Number(item.rate) || 0;
-                  const baseAmount = Number(item.amount) || (quantity * rate);
-                  const gstPercentage = Number(item.gstPercentage) || 0;
-                  const gstAmount = Number(item.gstAmount) || (baseAmount * gstPercentage / 100);
-
-                  return (
-                    <tr key={index} style={{ minHeight: '3rem', verticalAlign: 'top' }}>
-                      <td className="border px-1 py-2 text-center w-[5%]" style={{ verticalAlign: 'top' }}>{index + 1}</td>
-                      <td className="border px-2 py-2" style={{ verticalAlign: 'top' }}>
-                        {item.productName}
-                        {/* Only show details if quantity is not 1 OR GST is greater than 0 */}
-                        {!(quantity === 1 && gstPercentage === 0) && (
-                          <div className="text-[9px] text-[#4b5563] mt-1">
-                            {quantity !== 1 && `Qty: ${quantity} × `}Rate: ₹{rate.toFixed(2)}
-                            {gstPercentage > 0 && ` | GST: ${gstPercentage}%`}
-                          </div>
-                        )}
-                      </td>
-                      <td className="border px-1 py-2 text-center w-[15%]" style={{ verticalAlign: 'top' }}>
-                        {/* If quantity is 1 and GST is 0, show only the amount */}
-                        {quantity === 1 && gstPercentage === 0 ? (
-                          <div className="text-xs">
-                            ₹{rate.toFixed(2)}
-                          </div>
-                        ) : (
-                          <div className="space-y-0.5">
-                            {quantity !== 1 && (
-                              <div className="text-xs">
-                                <span className="text-[#4b5563]">Amount:</span> ₹{rate.toFixed(2)}
-                              </div>
-                            )}
-                            {gstPercentage > 0 && (
-                              <div className="text-xs">
-                                <span className="text-[#4b5563]">GST ({gstPercentage}%):</span> ₹{gstAmount.toFixed(2)}
-                              </div>
-                            )}
-                            {quantity === 1 && gstPercentage > 0 && (
-                              <div className="text-xs">
-                                <span className="text-[#4b5563]">Amount:</span> ₹{rate.toFixed(2)}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            <tfoot>
-              <tr className="bg-[#d1d5dc]">
-                <td className="border px-1 py-2" colSpan={2}><strong>Total</strong></td>
-                <td className="border px-1 py-2 text-center">
-                  <strong>
-                    ₹{(totals.grandTotal || 0).toFixed(2)}
-                  </strong>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
+              </tfoot>
+            </table>
+          </div>
           <div className="invoice-footer flex justify-between mt-4">
             <div className="account-details w-[50%]">
               {companyInfo && <span>
@@ -1328,29 +810,13 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
                       <tr>
                         <td className="py-1"><strong>CGST:</strong></td>
                         <td className="py-1">
-                          ₹{items.reduce((total, item) => {
-                            const quantity = Number(item.quantity) || 0;
-                            const rate = Number(item.rate) || 0;
-                            const amount = Number(item.amount) || (quantity * rate);
-                            const gstPercentage = Number(item.gstPercentage) || 0;
-                            const gstAmount = Number(item.gstAmount) || (amount * gstPercentage / 100);
-                            const cgst = Number(item.cgst) || (gstAmount / 2);
-                            return total + cgst;
-                          }, 0).toFixed(2)}
+                          ₹{invoiceTotals.cgst.toFixed(2)}
                         </td>
                       </tr>
                       <tr>
                         <td className="py-1"><strong>SGST:</strong></td>
                         <td className="py-1">
-                          ₹{items.reduce((total, item) => {
-                            const quantity = Number(item.quantity) || 0;
-                            const rate = Number(item.rate) || 0;
-                            const amount = Number(item.amount) || (quantity * rate);
-                            const gstPercentage = Number(item.gstPercentage) || 0;
-                            const gstAmount = Number(item.gstAmount) || (amount * gstPercentage / 100);
-                            const sgst = Number(item.sgst) || (gstAmount / 2);
-                            return total + sgst;
-                          }, 0).toFixed(2)}
+                          ₹{invoiceTotals.sgst.toFixed(2)}
                         </td>
                       </tr>
                       <tr>

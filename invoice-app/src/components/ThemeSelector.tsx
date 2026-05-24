@@ -26,7 +26,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({ isCollapsed = fals
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           'w-full flex items-center rounded-lg text-sm transition-colors text-slate-600 hover:bg-slate-100 hover:text-slate-900',
-          isCollapsed ? 'justify-center p-2' : 'px-3 py-2'
+          isCollapsed ? 'justify-center p-1.5' : 'px-3 py-2'
         )}
         title={isCollapsed ? 'Change theme' : ''}
       >

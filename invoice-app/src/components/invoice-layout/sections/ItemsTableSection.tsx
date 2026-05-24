@@ -1,60 +1,40 @@
 import React from 'react';
 import type { CompanyInfo, Customer, InvoiceItem } from '../../../types';
+import { calculateInvoiceTotals } from '../../../utils/invoiceCalculations';
+import { InvoiceItemsTable } from '../../invoice/InvoiceHierarchyRows';
 
 interface ItemsTableSectionProps {
-  company: CompanyInfo | null;
-  customer: Customer | null;
+  company?: CompanyInfo | null;
+  customer?: Customer | null;
   items: InvoiceItem[];
-  invoiceNumber: string;
-  invoiceDate: string;
-  dueDate: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  dueDate?: string;
   paymentStatus?: string;
-  totals: {
-    totalAmount: number;
-    totalGST: number;
-    grandTotal: number;
-    totalPaid: number;
-    totalWave: number;
-    balanceAmount: number;
-  };
+  totals?: unknown;
 }
 
 export const ItemsTableSection: React.FC<ItemsTableSectionProps> = ({ items }) => {
+  const { totalAmount } = calculateInvoiceTotals(items);
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left border-collapse text-xs">
-        <thead>
+    <InvoiceItemsTable
+      variant="classic"
+      headerVariant="classic"
+      items={items}
+      renderOptions={{ showSubItems: true, hideZeroCostSubs: false }}
+      footer={
+        <tfoot>
           <tr className="bg-gray-200">
-            <th className="border px-2 py-0.5 w-[8%]">Index</th>
-            <th className="border px-2 py-0.5">Particular</th>
-            <th className="border px-2 py-0.5 w-[18%] text-right">Amount</th>
+            <td className="border border-gray-400 px-2 py-1" colSpan={2}>
+              <strong>Subtotal</strong>
+            </td>
+            <td className="border border-gray-400 px-2 py-1 text-right">
+              <strong>₹{totalAmount.toFixed(2)}</strong>
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {items.length === 0 ? (
-            <tr>
-              <td colSpan={3} className="border px-2 py-4 text-center text-gray-500">
-                No items added yet.
-              </td>
-            </tr>
-          ) : (
-            items.map((item, index) => (
-              <tr key={index} className="leading-tight">
-                <td className="border px-2 py-0.5 text-center align-top">{index + 1}</td>
-                <td className="border px-2 py-0.5 align-top">
-                  <div className="font-medium leading-tight">{item.productName}</div>
-                  {(Number(item.quantity) !== 1 || Number(item.gstPercentage) !== 0) && (
-                    <div className="text-[10px] text-gray-600 leading-tight">
-                      Qty: {item.quantity} × ₹{Number(item.rate).toFixed(2)} | GST: {item.gstPercentage}%
-                    </div>
-                  )}
-                </td>
-                <td className="border px-2 py-0.5 text-right align-top">₹{Number(item.amount || item.quantity * item.rate).toFixed(2)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+        </tfoot>
+      }
+    />
   );
 };

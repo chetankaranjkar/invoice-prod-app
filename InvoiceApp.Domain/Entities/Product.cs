@@ -15,6 +15,7 @@ namespace InvoiceApp.Domain.Entities
         public bool InheritGstFromParent { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
+        public int DisplayOrder { get; set; }
 
         public User? User { get; set; }
         public Product? ParentProduct { get; set; }

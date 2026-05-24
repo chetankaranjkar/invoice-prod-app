@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Trash2, UserPlus, IndianRupee, FolderOpen } from 'lucide-react';
+import { Plus, UserPlus, IndianRupee, FolderOpen } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto, Product } from '../types';
+import type { Customer, InvoiceItem, PaymentStatus, CreateInvoiceDto, InvoiceTemplateItemDto } from '../types';
 import { InvoiceFormTaxableDetails } from './InvoiceFormTaxableDetails.tsx';
 import { getFinancialYearString, parseLocalDate } from '../utils/helpers';
 import {
   calculateInvoiceTotals,
   createLineKey,
+  nextParentDisplayOrder,
   toInvoiceItemDtoPayload,
 } from '../utils/invoiceCalculations';
+import type { InvoiceLineInput } from '../utils/invoiceCalculations';
 import { AddCustomerModal } from './AddCustomerModal';
 import { HierarchicalInvoiceItems } from './invoice/HierarchicalInvoiceItems';
 import { DateInput } from './dates';
@@ -64,10 +66,11 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const [selectedCustomer, setSelectedCustomer] = useState<number>(initialCustomerId || 0);
   const { profile } = useAuth();
   const defaultGstPercentage = profile?.defaultGstPercentage ?? 18;
+  const hideGst = defaultGstPercentage === 0;
   const disableQuantity = profile?.disableQuantity ?? false;
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
-  const { themeColors, focusRing } = useTheme();
+  const { themeColors } = useTheme();
   const toWords = new ToWords({
     localeCode: 'en-IN',
     converterOptions: {
@@ -101,70 +104,19 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       alert('Please select a customer first before adding items.');
       return;
     }
-    // Add new item at the start of the array
-    setItems([{ productName: '', quantity: 1, rate: 0, gstPercentage: defaultGstPercentage }, ...items]);
-    // Ensure quantity is always 1 if disabled
-    if (disableQuantity) {
-      const newItems = [{ productName: '', quantity: 1, rate: 0, gstPercentage: defaultGstPercentage }, ...items];
-      setItems(newItems.map(item => ({ ...item, quantity: 1 })));
-    }
-  };
-
-  const removeItem = (index: number) => {
-    if (items.length > 1) {
-      setItems(items.filter((_, i) => i !== index));
-    }
-  };
-
-  const updateItem = (index: number, field: keyof InvoiceItem, value: any) => {
-    const updatedItems = [...items];
-
-    updatedItems[index] = { ...updatedItems[index], [field]: value };
-
-    if (['quantity', 'rate', 'gstPercentage'].includes(field)) {
-      // If quantity is disabled, always use 1
-      const quantity = disableQuantity ? 1 : (Number(updatedItems[index].quantity) || 1);
-      const rate = Number(updatedItems[index].rate) || 0;
-      const gstPercentage = updatedItems[index].gstPercentage !== undefined && updatedItems[index].gstPercentage !== null 
-        ? Number(updatedItems[index].gstPercentage) 
-        : 0;
-
-      const amount = quantity * rate;
-      const { gstAmount, cgst, sgst } = calculateGST(amount, gstPercentage);
-
-      updatedItems[index] = {
-        ...updatedItems[index],
-        quantity: disableQuantity ? 1 : quantity,
-        amount,
-        gstAmount,
-        cgst,
-        sgst,
-      };
-    }
-
-    setItems(updatedItems);
-  };
-
-  const handleProductChange = (index: number, productName: string, product?: Product) => {
-    if (product) {
-      const updatedItems = [...items];
-      const current = updatedItems[index];
-      updatedItems[index] = {
-        ...current,
-        productName: product.name,
-        rate: product.defaultRate ?? current.rate ?? 0,
-        gstPercentage: defaultGstPercentage, // Always use profile's GST when selecting product
-      };
-      const quantity = disableQuantity ? 1 : (Number(updatedItems[index].quantity) || 1);
-      const rate = Number(updatedItems[index].rate) || 0;
-      const gstPercentage = updatedItems[index].gstPercentage ?? 0;
-      const amount = quantity * rate;
-      const { gstAmount, cgst, sgst } = calculateGST(amount, gstPercentage);
-      updatedItems[index] = { ...updatedItems[index], amount, gstAmount, cgst, sgst };
-      setItems(updatedItems);
-    } else {
-      updateItem(index, 'productName', productName);
-    }
+    setItems([
+      ...items,
+      {
+        lineKey: createLineKey(),
+        productName: '',
+        quantity: 1,
+        rate: 0,
+        gstPercentage: defaultGstPercentage,
+        affectTotal: true,
+        hierarchyLevel: 0,
+        displayOrder: nextParentDisplayOrder(items as InvoiceLineInput[]),
+      },
+    ]);
   };
 
   const calculateTotals = () => {
@@ -522,6 +474,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
                 setItems={setItems}
                 disableQuantity={disableQuantity}
                 defaultGstPercentage={defaultGstPercentage}
+                hideGst={hideGst}
               />
             </div>
 
@@ -533,6 +486,7 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
               totalAmount={totalAmount}
               grandTotal={grandTotal}
               amountInWords={amountInWords}
+              hideGst={hideGst}
             />
           </div>
 

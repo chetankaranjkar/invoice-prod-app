@@ -2,23 +2,27 @@ interface InvoiceFormTaxableDetailsProps {
   totalAmount: number;
   grandTotal: number;
   amountInWords: string;
+  hideGst?: boolean;
 }
 
 export const InvoiceFormTaxableDetails = ({
   totalAmount,
   grandTotal,
   amountInWords,
+  hideGst = false,
 }: InvoiceFormTaxableDetailsProps) => {
   return (
     <div className="invoice-summary">
       <table className="w-full text-left text-xs">
         <tbody>
-          <tr>
-            <td className="py-1"><strong>Taxable Amount:</strong></td>
-            <td className="py-1 text-right">₹{totalAmount.toFixed(2)}</td>
-          </tr>
+          {!hideGst && (
+            <tr>
+              <td className="py-1"><strong>Taxable Amount:</strong></td>
+              <td className="py-1 text-right">₹{totalAmount.toFixed(2)}</td>
+            </tr>
+          )}
           <tr className="font-bold">
-            <td className="py-1">Grand Total:</td>
+            <td className="py-1">{hideGst ? 'Total:' : 'Grand Total:'}</td>
             <td className="py-1 text-right">₹{grandTotal.toFixed(2)}</td>
           </tr>
           <tr>

@@ -155,7 +155,7 @@ namespace InvoiceApp.Infrastructure.Migrations
                 column: "ProductId",
                 principalTable: "Products",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.Restrict);
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)

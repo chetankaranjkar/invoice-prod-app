@@ -14,7 +14,14 @@ namespace InvoiceApp.Application.DTOs
         public bool InheritGstFromParent { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
+        public int DisplayOrder { get; set; }
         public List<ProductDto> Children { get; set; } = new();
+    }
+
+    public class ReorderProductItemDto
+    {
+        public int Id { get; set; }
+        public int DisplayOrder { get; set; }
     }
 
     public class CreateProductDto
@@ -29,6 +36,7 @@ namespace InvoiceApp.Application.DTOs
         public bool? InheritGstFromParent { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
+        public int DisplayOrder { get; set; }
     }
 
     public class UpdateProductDto : CreateProductDto

@@ -18,6 +18,7 @@ import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { AddPaymentModal } from '../components/AddPaymentModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
+import { buildHtml2CanvasOnClone } from '../utils/pdfCapture';
 import jsPDF from 'jspdf';
 
 interface CustomersPageProps {
@@ -280,21 +281,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        onclone: (clonedDoc, clonedEl) => {
-          const styleTags = Array.from(clonedDoc.querySelectorAll('style'));
-          styleTags.forEach((tag) => {
-            if (tag.textContent) {
-              tag.textContent = tag.textContent
-                .replace(/oklch\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                .replace(/oklab\([^)]+\)/gi, 'rgb(128, 128, 128)')
-                .replace(/oslch\([^)]+\)/gi, 'rgb(128, 128, 128)');
-            }
-          });
-          // Ensure the cloned root also has the pdf-export class
-          if (clonedEl) {
-            (clonedEl as HTMLElement).classList.add('pdf-export');
-          }
-        },
+        onclone: buildHtml2CanvasOnClone(previewEl),
       });
 
       const imgData = canvas.toDataURL('image/png');

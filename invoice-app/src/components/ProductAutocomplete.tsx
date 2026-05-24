@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useLayoutEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
+import { ChevronDown } from 'lucide-react';
 import { api } from '../services/agent';
 import type { Product } from '../types';
 
@@ -14,20 +15,32 @@ interface ProductAutocompleteProps {
   required?: boolean;
   /** When true, only parent products appear in suggestions */
   parentOnly?: boolean;
+  /** Hide GST in suggestion subtitles (e.g. profile GST = 0) */
+  hideGstInSuggestions?: boolean;
 }
 
 const DEBOUNCE_MS = 250;
+const SEARCH_LIMIT = 20;
+const LIST_LIMIT = 50;
+
+function filterProducts(list: Product[], parentOnly: boolean): Product[] {
+  if (!parentOnly) return list;
+  return list.filter(
+    (p) => p.productType === 'parent' || !p.productType || !p.parentProductId
+  );
+}
 
 export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
   value,
   onChange,
   disabled = false,
-  placeholder = '',
+  placeholder = 'Select or search product…',
   className = '',
   focusRing = 'focus:ring-blue-500',
   ariaLabel = 'Product name',
   required = false,
   parentOnly = false,
+  hideGstInSuggestions = false,
 }) => {
   const [suggestions, setSuggestions] = useState<Product[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -45,7 +58,6 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
     const rect = input.getBoundingClientRect();
     const pad = 12;
     const maxW = Math.max(200, window.innerWidth - pad * 2);
-    // At least as wide as the field; on small screens allow a comfortable min so text isn’t cramped
     const targetW = Math.max(rect.width, Math.min(360, maxW));
     const w = Math.min(targetW, maxW);
 
@@ -59,7 +71,7 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
 
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const spaceAbove = rect.top - 8;
-    const maxH = 192; // 12rem
+    const maxH = 240;
     const openDown = spaceBelow >= 120 || spaceBelow >= spaceAbove;
 
     dd.style.position = 'fixed';
@@ -79,7 +91,7 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
   }, [showDropdown]);
 
   useLayoutEffect(() => {
-    if (!showDropdown || (!loading && suggestions.length === 0)) return;
+    if (!showDropdown) return;
     const run = () => positionDropdown();
     run();
     const id = window.requestAnimationFrame(run);
@@ -97,33 +109,31 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
     };
   }, [showDropdown, positionDropdown]);
 
-  const fetchProducts = useCallback(async (q: string) => {
-    if (!q || q.trim().length === 0) {
-      setSuggestions([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await api.products.search(q.trim(), 15);
-      const list = Array.isArray(res.data) ? res.data : [];
-      setSuggestions(
-        parentOnly
-          ? list.filter((p) => p.productType === 'parent' || !p.productType)
-          : list
-      );
-    } catch {
-      setSuggestions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [parentOnly]);
+  const fetchProducts = useCallback(
+    async (q: string) => {
+      setLoading(true);
+      try {
+        const term = q.trim();
+        const limit = term ? SEARCH_LIMIT : LIST_LIMIT;
+        const res = await api.products.search(term, limit);
+        const list = Array.isArray(res.data) ? res.data : [];
+        setSuggestions(filterProducts(list, parentOnly));
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [parentOnly]
+  );
 
   useEffect(() => {
+    if (!showDropdown) return;
     const timer = setTimeout(() => {
       fetchProducts(value);
-    }, DEBOUNCE_MS);
+    }, value.trim() ? DEBOUNCE_MS : 0);
     return () => clearTimeout(timer);
-  }, [value, fetchProducts]);
+  }, [value, fetchProducts, showDropdown]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -136,9 +146,14 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const openDropdown = () => {
+    if (disabled) return;
+    setShowDropdown(true);
+    fetchProducts(value);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = e.target.value;
-    onChange(v);
+    onChange(e.target.value);
     setShowDropdown(true);
   };
 
@@ -148,35 +163,59 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
   };
 
   const handleFocus = () => {
-    if (suggestions.length > 0) setShowDropdown(true);
+    openDropdown();
   };
 
   const handleBlur = () => {
-    // Delay to allow click on suggestion
     setTimeout(() => setShowDropdown(false), 150);
+  };
+
+  const handleToggleDropdown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (disabled) return;
+    if (showDropdown) {
+      setShowDropdown(false);
+    } else {
+      openDropdown();
+      inputRef.current?.focus();
+    }
   };
 
   return (
     <div ref={containerRef} className="relative isolate w-full min-w-0 block">
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={handleInputChange}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
-        disabled={disabled}
-        placeholder={placeholder}
-        aria-label={ariaLabel}
-        aria-autocomplete="list"
-        aria-expanded={showDropdown && (loading || suggestions.length > 0) ? 'true' : 'false'}
-        aria-controls={listboxId}
-        autoComplete="off"
-        required={required}
-        title={ariaLabel}
-        className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''} ${className}`}
-      />
-      {showDropdown && (loading || suggestions.length > 0) &&
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          disabled={disabled}
+          placeholder={placeholder}
+          aria-label={ariaLabel}
+          aria-autocomplete="list"
+          aria-expanded={showDropdown ? 'true' : 'false'}
+          aria-controls={listboxId}
+          autoComplete="off"
+          required={required}
+          title={ariaLabel}
+          className={`w-full py-1.5 pl-2 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 ${focusRing} ${disabled ? 'bg-gray-100 cursor-not-allowed' : ''} ${className}`}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          aria-label="Show products"
+          onMouseDown={handleToggleDropdown}
+          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+          />
+        </button>
+      </div>
+      {showDropdown &&
         typeof document !== 'undefined' &&
         createPortal(
           <div
@@ -186,13 +225,18 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
             style={{ pointerEvents: 'auto' }}
             role="listbox"
           >
-            {loading && suggestions.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-gray-500">Searching...</div>
+            {loading ? (
+              <div className="px-3 py-2 text-sm text-gray-500">Loading products…</div>
+            ) : suggestions.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-gray-500">
+                {value.trim() ? 'No matching products' : 'No products found'}
+              </div>
             ) : (
               suggestions.map((p) => (
                 <div
                   key={p.id}
                   role="option"
+                  aria-selected={value === p.name}
                   className="cursor-pointer border-b border-gray-100 px-3 py-2 text-sm leading-snug last:border-b-0 hover:bg-blue-50"
                   onMouseDown={(e) => {
                     e.preventDefault();
@@ -200,18 +244,28 @@ export const ProductAutocomplete: React.FC<ProductAutocompleteProps> = ({
                   }}
                 >
                   <div className="break-words text-gray-900">{p.name}</div>
-                  {(p.defaultRate != null || p.defaultGstPercentage != null) && (
+                  {(p.defaultRate != null ||
+                    (!hideGstInSuggestions && p.defaultGstPercentage != null) ||
+                    p.parentProductName) && (
                     <div className="mt-0.5 text-xs text-gray-500">
+                      {p.parentProductName && (
+                        <span className="text-sky-600">{p.parentProductName} · </span>
+                      )}
                       {p.defaultRate != null && `₹${p.defaultRate}`}
-                      {p.defaultRate != null && p.defaultGstPercentage != null && ' • '}
-                      {p.defaultGstPercentage != null && `${p.defaultGstPercentage}% GST`}
+                      {!hideGstInSuggestions &&
+                        p.defaultRate != null &&
+                        p.defaultGstPercentage != null &&
+                        ' • '}
+                      {!hideGstInSuggestions &&
+                        p.defaultGstPercentage != null &&
+                        `${p.defaultGstPercentage}% GST`}
                     </div>
                   )}
                 </div>
               ))
             )}
           </div>,
-          document.body,
+          document.body
         )}
     </div>
   );

@@ -3,6 +3,7 @@ import {
   calculateInvoiceTotals,
   calculateLineAmounts,
   buildInvoiceHierarchy,
+  flattenHierarchyForRender,
 } from './invoiceCalculations';
 
 describe('invoiceCalculations', () => {
@@ -34,6 +35,12 @@ describe('invoiceCalculations', () => {
     expect(totals.totalAmount).toBe(100000);
     expect(totals.gstAmount).toBe(18000);
     expect(totals.grandTotal).toBe(118000);
+
+    const rows = flattenHierarchyForRender(items, { showSubItems: true, hideZeroCostSubs: false });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].serialNumber).toBe(1);
+    expect(rows[1].isSub).toBe(true);
+    expect(rows[1].serialNumber).toBeNull();
   });
 
   it('calculateLineAmounts skips GST when not taxable', () => {
