@@ -98,8 +98,8 @@ namespace InvoiceApp.Api.Controllers
                 // Return the backup file
                 try
                 {
-                    var fileBytes = await System.IO.File.ReadAllBytesAsync(backupResult.FilePath);
-                    return File(fileBytes, "application/zip", backupResult.FileName ?? "backup.zip");
+                    var fileStream = new FileStream(backupResult.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    return File(fileStream, "application/zip", backupResult.FileName ?? "backup.zip");
                 }
                 catch (Exception fileEx)
                 {

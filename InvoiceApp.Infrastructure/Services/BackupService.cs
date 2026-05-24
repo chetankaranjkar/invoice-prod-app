@@ -1,5 +1,7 @@
 using InvoiceApp.Application.Interfaces;
+using InvoiceApp.Infrastructure.Data;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -9,6 +11,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace InvoiceApp.Infrastructure.Services
@@ -17,13 +21,15 @@ namespace InvoiceApp.Infrastructure.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<BackupService> _logger;
+        private readonly AppDbContext _dbContext;
         private readonly string _backupDirectory;
         private readonly string _uploadsDirectory;
 
-        public BackupService(IConfiguration configuration, ILogger<BackupService> logger)
+        public BackupService(IConfiguration configuration, ILogger<BackupService> logger, AppDbContext dbContext)
         {
             _configuration = configuration;
             _logger = logger;
+            _dbContext = dbContext;
             
             // Set backup directory (relative to wwwroot or absolute path)
             var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
@@ -174,40 +180,12 @@ namespace InvoiceApp.Infrastructure.Services
                     if (Directory.Exists(dbBackupDir))
                     {
                         var dbBackupFile = Directory.GetFiles(dbBackupDir, "*.bak").FirstOrDefault();
+                        var jsonMetadata = Path.Combine(dbBackupDir, "_backup_metadata.json");
+
                         if (dbBackupFile != null)
                         {
-                            _logger.LogInformation("Copying database backup to shared volume...");
-                            
-                            // Copy backup file to shared volume so SQL Server can access it
-                            // Shared volume is mounted at /app/wwwroot/backups/shared in API container
-                            var sharedBackupDir = "/app/wwwroot/backups/shared";
-                            var sharedBackupPath = Path.Combine(sharedBackupDir, Path.GetFileName(dbBackupFile));
-                            
-                            try
-                            {
-                                // Ensure directory exists
-                                if (!Directory.Exists(sharedBackupDir))
-                                {
-                                    Directory.CreateDirectory(sharedBackupDir);
-                                }
-                                
-                                File.Copy(dbBackupFile, sharedBackupPath, true);
-                                _logger.LogInformation("Database backup copied to shared volume: {Path}", sharedBackupPath);
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "Failed to copy backup to shared volume");
-                                return new RestoreResult
-                                {
-                                    Success = false,
-                                    ErrorMessage = $"Failed to copy backup file to shared volume: {ex.Message}"
-                                };
-                            }
-                            
-                            // SQL Server sees the file at /var/opt/mssql/backup
-                            var sqlBackupPath = $"/var/opt/mssql/backup/{Path.GetFileName(dbBackupFile)}";
                             _logger.LogInformation("Restoring database from backup...");
-                            var restoreResult = await RestoreDatabaseAsync(sqlBackupPath);
+                            var restoreResult = await RestoreDatabaseAsync(dbBackupFile);
                             if (!restoreResult.Success)
                             {
                                 return new RestoreResult
@@ -217,6 +195,45 @@ namespace InvoiceApp.Infrastructure.Services
                                 };
                             }
                         }
+                        else if (File.Exists(jsonMetadata))
+                        {
+                            _logger.LogInformation("Restoring database from JSON table export...");
+                            var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING")
+                                ?? _configuration.GetConnectionString("DefaultConnection");
+                            if (string.IsNullOrEmpty(connectionString))
+                            {
+                                return new RestoreResult { Success = false, ErrorMessage = "Database connection string not found" };
+                            }
+
+                            var importResult = await ImportDatabaseFromJsonAsync(dbBackupDir, connectionString);
+                            if (!importResult.Success)
+                            {
+                                return new RestoreResult
+                                {
+                                    Success = false,
+                                    ErrorMessage = $"Database restore from JSON failed: {importResult.ErrorMessage}"
+                                };
+                            }
+                        }
+                        else
+                        {
+                            return new RestoreResult
+                            {
+                                Success = false,
+                                ErrorMessage =
+                                    "No database backup (.bak) found in the ZIP. Only uploaded files would be restored."
+                            };
+                        }
+                    }
+                    else
+                    {
+                        return new RestoreResult
+                        {
+                            Success = false,
+                            ErrorMessage =
+                                "Backup ZIP has no database folder. Cannot restore SQL data. " +
+                                "Use a full backup created from Backup & Restore in the app."
+                        };
                     }
 
                     // Step 2: Restore uploaded files
@@ -313,259 +330,168 @@ namespace InvoiceApp.Infrastructure.Services
 
                 // Parse connection string to get server and database info
                 var builder = new SqlConnectionStringBuilder(connectionString);
-                var server = builder.DataSource;
                 var database = builder.InitialCatalog ?? "InvoiceApp";
 
-                // Create backup file path
-                var backupFileName = $"{database}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
-                var backupFilePath = Path.Combine(backupDir, backupFileName);
+                // Detect environment: Docker/Linux vs Windows local
+                var isDocker = File.Exists("/.dockerenv") || 
+                               !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"));
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
-                // For Docker environment, SQL Server needs write permissions
-                // First try the shared volume path, if that fails, use data directory
-                var sqlBackupPath = $"/var/opt/mssql/backup/{backupFileName}";
-                var sqlBackupPathAlt = $"/var/opt/mssql/data/{backupFileName}"; // Fallback location
+                // Strategy: Try BACKUP DATABASE to a path SQL Server can write to.
+                // On Windows local: use SQL Server's own default backup directory (it always has write access there).
+                // On Docker: use the shared volume.
+                // After backup, copy the .bak file to our temp backupDir.
+
+                string sqlBackupPath;
+                var backupFileName = $"{database}_{DateTime.Now:yyyyMMdd_HHmmss}.bak";
                 var localBackupPath = Path.Combine(backupDir, backupFileName);
-                
-                // Execute backup command - try shared volume first
+
+                if (isWindows && !isDocker)
+                {
+                    // On Windows, query SQL Server for a path IT can write to
+                    // Use SERVERPROPERTY which is available on SQL Server 2012+
+                    string? defaultBackupDir = null;
+                    try
+                    {
+                        using (var connection = new SqlConnection(connectionString))
+                        {
+                            await connection.OpenAsync();
+                            using (var cmd = new SqlCommand(
+                                "SELECT SERVERPROPERTY('InstanceDefaultBackupPath')", connection))
+                            {
+                                var result = await cmd.ExecuteScalarAsync();
+                                defaultBackupDir = result?.ToString();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not query InstanceDefaultBackupPath");
+                    }
+
+                    // Fallback: query registry
+                    if (string.IsNullOrEmpty(defaultBackupDir))
+                    {
+                        try
+                        {
+                            using (var connection = new SqlConnection(connectionString))
+                            {
+                                await connection.OpenAsync();
+                                using (var cmd = new SqlCommand(
+                                    "EXEC master.dbo.xp_instance_regread N'HKEY_LOCAL_MACHINE', N'Software\\Microsoft\\MSSQLServer\\MSSQLServer', N'BackupDirectory'",
+                                    connection))
+                                {
+                                    using (var reader = await cmd.ExecuteReaderAsync())
+                                    {
+                                        if (await reader.ReadAsync() && !reader.IsDBNull(1))
+                                        {
+                                            defaultBackupDir = reader.GetString(1);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Could not query backup directory from registry");
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(defaultBackupDir))
+                    {
+                        sqlBackupPath = Path.Combine(defaultBackupDir, backupFileName);
+                    }
+                    else
+                    {
+                        // Last resort: use the localBackupPath and hope SQL Server has access
+                        sqlBackupPath = localBackupPath;
+                    }
+
+                    _logger.LogInformation("Windows environment. SQL Server backup path: {Path}", sqlBackupPath);
+                }
+                else
+                {
+                    // Docker/Linux environment - use shared volume path
+                    sqlBackupPath = $"/var/opt/mssql/backup/{backupFileName}";
+                    _logger.LogInformation("Docker/Linux environment. Backup path: {Path}", sqlBackupPath);
+                }
+
+                // Execute BACKUP DATABASE
                 _logger.LogInformation("Starting database backup to: {Path}", sqlBackupPath);
                 try
                 {
                     using (var connection = new SqlConnection(connectionString))
                     {
                         await connection.OpenAsync();
-                        _logger.LogInformation("Database connection opened successfully");
                         
-                        // Escape single quotes in path for SQL
                         var escapedPath = sqlBackupPath.Replace("'", "''");
                         var backupSql = $@"
                             BACKUP DATABASE [{database}] 
-                            TO DISK = '{escapedPath}' 
+                            TO DISK = N'{escapedPath}' 
                             WITH FORMAT, INIT, 
-                            NAME = 'InvoiceApp Full Backup', 
+                            NAME = N'InvoiceApp Full Backup', 
                             SKIP, NOREWIND, NOUNLOAD, 
                             STATS = 10";
-                        
-                        _logger.LogInformation("Executing backup SQL command");
 
                         using (var command = new SqlCommand(backupSql, connection))
                         {
-                            command.CommandTimeout = 300; // 5 minutes timeout
+                            command.CommandTimeout = 300;
                             await command.ExecuteNonQueryAsync();
                         }
-                        _logger.LogInformation("Database backup SQL command executed successfully");
-                        
-                        // Verify backup file was created
-                        await Task.Delay(2000); // Wait for file to be written
+                        _logger.LogInformation("BACKUP DATABASE completed successfully");
                     }
                 }
                 catch (SqlException sqlEx)
                 {
-                    // If backup to shared volume fails due to permissions, try data directory
-                    if (sqlEx.Number == 3201 && sqlEx.Message.Contains("Access is denied"))
+                    _logger.LogError(sqlEx, "BACKUP DATABASE failed. Error {Number}: {Message}", sqlEx.Number, sqlEx.Message);
+                    
+                    // If native backup fails, fall back to data export approach
+                    _logger.LogInformation("Falling back to data export approach...");
+                    return await ExportDatabaseAsJsonAsync(backupDir, connectionString, database);
+                }
+
+                // Now copy the .bak file to our local backup directory
+                if (sqlBackupPath != localBackupPath)
+                {
+                    await Task.Delay(500); // Brief wait for filesystem
+
+                    if (isWindows && !isDocker)
                     {
-                        _logger.LogWarning("Backup to shared volume failed due to permissions. Trying data directory...");
-                        sqlBackupPath = sqlBackupPathAlt;
-                        
-                        try
+                        // Try to copy from SQL Server's backup directory
+                        if (File.Exists(sqlBackupPath))
                         {
-                            using (var connection = new SqlConnection(connectionString))
-                            {
-                                await connection.OpenAsync();
-                                var escapedPath = sqlBackupPath.Replace("'", "''");
-                                var backupSql = $@"
-                                    BACKUP DATABASE [{database}] 
-                                    TO DISK = '{escapedPath}' 
-                                    WITH FORMAT, INIT, 
-                                    NAME = 'InvoiceApp Full Backup', 
-                                    SKIP, NOREWIND, NOUNLOAD, 
-                                    STATS = 10";
-                                
-                                using (var command = new SqlCommand(backupSql, connection))
-                                {
-                                    command.CommandTimeout = 300;
-                                    await command.ExecuteNonQueryAsync();
-                                }
-                                _logger.LogInformation("Database backup created successfully in data directory: {Path}", sqlBackupPath);
-                            }
+                            File.Copy(sqlBackupPath, localBackupPath, true);
+                            _logger.LogInformation("Backup file copied from {Source} to {Dest}", sqlBackupPath, localBackupPath);
+                            try { File.Delete(sqlBackupPath); } catch { }
                         }
-                        catch (Exception retryEx)
+                        else
                         {
-                            _logger.LogError(retryEx, "Backup to data directory also failed: {Message}", retryEx.Message);
-                            return (false, $"Database backup failed: {retryEx.Message}. Please run fix-backup-permissions.bat to fix permissions.");
+                            _logger.LogWarning("Backup file not found at {Path}, falling back to data export", sqlBackupPath);
+                            return await ExportDatabaseAsJsonAsync(backupDir, connectionString, database);
                         }
                     }
                     else
                     {
-                        _logger.LogError(sqlEx, "SQL Server error during backup. Error Number: {Number}, Message: {Message}", 
-                            sqlEx.Number, sqlEx.Message);
-                        return (false, $"SQL Server error: {sqlEx.Message} (Error {sqlEx.Number})");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error executing database backup command: {Message}", ex.Message);
-                    return (false, $"Error executing backup: {ex.Message}");
-                }
-                
-                _logger.LogInformation("Database backup command completed successfully");
-                
-                // Copy backup file to local backup directory
-                // If backup was created in data directory, we need to copy it via shared volume or docker exec
-                var sharedBackupDir = "/app/wwwroot/backups/shared";
-                var sharedBackupPath = Path.Combine(sharedBackupDir, backupFileName);
-                
-                try
-                {
-                    // Ensure shared directory exists
-                    if (!Directory.Exists(sharedBackupDir))
-                    {
-                        Directory.CreateDirectory(sharedBackupDir);
-                    }
-                    
-                    // Wait for file to be written
-                    await Task.Delay(2000);
-                    
-                    // Try to copy from shared volume first (if backup was created there)
-                    if (File.Exists(sharedBackupPath))
-                    {
-                        File.Copy(sharedBackupPath, localBackupPath, true);
-                        _logger.LogInformation("Database backup copied from shared volume: {Path}", sharedBackupPath);
-                    }
-                    else if (sqlBackupPath.Contains("/data/"))
-                    {
-                        // Backup was created in data directory, try to copy it using SQL Server xp_cmdshell
-                        _logger.LogInformation("Backup was created in data directory. Attempting to copy to shared volume using SQL Server...");
-                        
-                        try
+                        // Docker: try shared volume
+                        var sharedBackupDir = "/app/wwwroot/backups/shared";
+                        var sharedBackupPath = Path.Combine(sharedBackupDir, backupFileName);
+
+                        if (!Directory.Exists(sharedBackupDir))
+                            Directory.CreateDirectory(sharedBackupDir);
+
+                        await Task.Delay(1000);
+
+                        if (File.Exists(sharedBackupPath))
                         {
-                            // Use SQL Server to copy the file (requires xp_cmdshell to be enabled)
-                            using (var connection = new SqlConnection(connectionString))
-                            {
-                                await connection.OpenAsync();
-                                
-                                // Enable xp_cmdshell temporarily
-                                using (var enableCmd = new SqlCommand(@"
-                                    EXEC sp_configure 'show advanced options', 1;
-                                    RECONFIGURE;
-                                    EXEC sp_configure 'xp_cmdshell', 1;
-                                    RECONFIGURE;", connection))
-                                {
-                                    await enableCmd.ExecuteNonQueryAsync();
-                                }
-                                
-                                // Copy file using xp_cmdshell
-                                var copyCommand = $"cp {sqlBackupPath} /var/opt/mssql/backup/{backupFileName}";
-                                var escapedCopyCommand = copyCommand.Replace("'", "''");
-                                using (var copyCmd = new SqlCommand($"EXEC xp_cmdshell '{escapedCopyCommand}'", connection))
-                                {
-                                    var result = await copyCmd.ExecuteScalarAsync();
-                                    _logger.LogInformation("SQL Server copy command executed");
-                                }
-                                
-                                // Set permissions
-                                var chmodCommand = $"chmod 666 /var/opt/mssql/backup/{backupFileName}";
-                                var escapedChmodCommand = chmodCommand.Replace("'", "''");
-                                using (var chmodCmd = new SqlCommand($"EXEC xp_cmdshell '{escapedChmodCommand}'", connection))
-                                {
-                                    await chmodCmd.ExecuteNonQueryAsync();
-                                }
-                                
-                                // Disable xp_cmdshell for security
-                                using (var disableCmd = new SqlCommand(@"
-                                    EXEC sp_configure 'xp_cmdshell', 0;
-                                    RECONFIGURE;
-                                    EXEC sp_configure 'show advanced options', 0;
-                                    RECONFIGURE;", connection))
-                                {
-                                    await disableCmd.ExecuteNonQueryAsync();
-                                }
-                                
-                                _logger.LogInformation("Backup file copied to shared volume via SQL Server xp_cmdshell");
-                                
-                                // Wait for file to be available
-                                await Task.Delay(2000);
-                                
-                                // Try to copy from shared volume
-                                if (File.Exists(sharedBackupPath))
-                                {
-                                    File.Copy(sharedBackupPath, localBackupPath, true);
-                                    _logger.LogInformation("Database backup copied from shared volume: {Path}", sharedBackupPath);
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("Backup file not found in shared volume after copy attempt");
-                                }
-                            }
+                            File.Copy(sharedBackupPath, localBackupPath, true);
+                            _logger.LogInformation("Backup copied from shared volume");
                         }
-                        catch (Exception sqlCopyEx)
+                        else
                         {
-                            _logger.LogWarning(sqlCopyEx, "Could not copy backup using SQL Server xp_cmdshell: {Message}", sqlCopyEx.Message);
-                            
-                            // Fallback: Try using docker exec if available (from host, not container)
-                            var isDocker = File.Exists("/.dockerenv") || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"));
-                            
-                            if (isDocker)
-                            {
-                                try
-                                {
-                                    // Try to use docker command (may not work from inside container)
-                                    var processStartInfo = new ProcessStartInfo
-                                    {
-                                        FileName = "docker",
-                                        Arguments = $"exec invoiceapp-db bash -c \"cp {sqlBackupPath} /var/opt/mssql/backup/{backupFileName} && chmod 666 /var/opt/mssql/backup/{backupFileName}\"",
-                                        RedirectStandardOutput = true,
-                                        RedirectStandardError = true,
-                                        UseShellExecute = false,
-                                        CreateNoWindow = true
-                                    };
-                                    
-                                    using (var process = Process.Start(processStartInfo))
-                                    {
-                                        if (process != null)
-                                        {
-                                            await process.WaitForExitAsync();
-                                            if (process.ExitCode == 0)
-                                            {
-                                                _logger.LogInformation("Backup file copied to shared volume via docker exec");
-                                                await Task.Delay(1000);
-                                                if (File.Exists(sharedBackupPath))
-                                                {
-                                                    File.Copy(sharedBackupPath, localBackupPath, true);
-                                                    _logger.LogInformation("Database backup copied from shared volume: {Path}", sharedBackupPath);
-                                                }
-                                            }
-                                            else
-                                            {
-                                                var error = await process.StandardError.ReadToEndAsync();
-                                                _logger.LogWarning("Docker exec copy failed: {Error}", error);
-                                            }
-                                        }
-                                    }
-                                }
-                                catch (Exception dockerEx)
-                                {
-                                    _logger.LogWarning(dockerEx, "Could not use docker exec. Docker may not be available in container.");
-                                }
-                            }
-                            
-                            // If still not copied, create a note
-                            if (!File.Exists(localBackupPath))
-                            {
-                                var noteFile = Path.Combine(backupDir, "backup-note.txt");
-                                await System.IO.File.WriteAllTextAsync(noteFile,
-                                    $"Database backup created in SQL Server container at: {sqlBackupPath}\n" +
-                                    $"The backup file exists but could not be automatically copied to the ZIP.\n\n" +
-                                    $"To fix this issue permanently, run: fix-backup-permissions.bat\n\n" +
-                                    $"To manually retrieve the backup:\n" +
-                                    $"  docker cp invoiceapp-db:{sqlBackupPath} .\n\n" +
-                                    $"The ZIP file contains uploaded files. Database backup can be retrieved manually.");
-                            }
+                            _logger.LogWarning("Backup not found in shared volume, falling back to data export");
+                            return await ExportDatabaseAsJsonAsync(backupDir, connectionString, database);
                         }
                     }
-                }
-                catch (Exception copyEx)
-                {
-                    _logger.LogWarning(copyEx, "Could not copy backup file to local directory: {Message}", copyEx.Message);
                 }
 
                 return (true, null);
@@ -574,6 +500,108 @@ namespace InvoiceApp.Infrastructure.Services
             {
                 _logger.LogError(ex, "Error backing up database");
                 return (false, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Fallback: Export all table data as JSON files (no SQL Server filesystem access needed).
+        /// The app reads data via SQL connection and writes files itself.
+        /// </summary>
+        private async Task<(bool Success, string? ErrorMessage)> ExportDatabaseAsJsonAsync(
+            string backupDir, string connectionString, string database)
+        {
+            try
+            {
+                _logger.LogInformation("Exporting database tables as JSON...");
+
+                using var connection = new SqlConnection(connectionString);
+                await connection.OpenAsync();
+
+                // Get all user tables
+                var tables = new List<string>();
+                using (var cmd = new SqlCommand(
+                    "SELECT SCHEMA_NAME(schema_id) + '.' + name FROM sys.tables WHERE is_ms_shipped = 0 ORDER BY name",
+                    connection))
+                {
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        tables.Add(reader.GetString(0));
+                    }
+                }
+
+                _logger.LogInformation("Found {Count} tables to export", tables.Count);
+
+                foreach (var table in tables)
+                {
+                    try
+                    {
+                        var rows = new List<Dictionary<string, object?>>();
+                        var schemaAndTable = table.Split('.');
+                        var schema = schemaAndTable[0];
+                        var tableName = schemaAndTable[1];
+                        
+                        using (var cmd = new SqlCommand($"SELECT * FROM [{schema}].[{tableName}]", connection))
+                        {
+                            cmd.CommandTimeout = 120;
+                            using var reader = await cmd.ExecuteReaderAsync();
+                            
+                            while (await reader.ReadAsync())
+                            {
+                                var row = new Dictionary<string, object?>();
+                                for (int i = 0; i < reader.FieldCount; i++)
+                                {
+                                    var value = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                                    // Convert byte arrays to base64 for JSON serialization
+                                    if (value is byte[] bytes)
+                                        value = Convert.ToBase64String(bytes);
+                                    else if (value is DateTime dt)
+                                        value = dt.ToString("O"); // ISO 8601
+                                    else if (value is DateTimeOffset dto)
+                                        value = dto.ToString("O");
+                                    else if (value is TimeSpan ts)
+                                        value = ts.ToString();
+                                    row[reader.GetName(i)] = value;
+                                }
+                                rows.Add(row);
+                            }
+                        }
+
+                        // Write table data as JSON
+                        var safeTableName = table.Replace(".", "_").Replace("[", "").Replace("]", "");
+                        var jsonFile = Path.Combine(backupDir, $"{safeTableName}.json");
+                        var json = System.Text.Json.JsonSerializer.Serialize(rows, new System.Text.Json.JsonSerializerOptions 
+                        { 
+                            WriteIndented = true 
+                        });
+                        await File.WriteAllTextAsync(jsonFile, json);
+                        
+                        _logger.LogInformation("Exported {Table}: {Count} rows", table, rows.Count);
+                    }
+                    catch (Exception tableEx)
+                    {
+                        _logger.LogWarning(tableEx, "Failed to export table {Table}", table);
+                    }
+                }
+
+                // Write metadata file
+                var metadata = new Dictionary<string, object>
+                {
+                    ["exportDate"] = DateTime.Now.ToString("O"),
+                    ["database"] = database,
+                    ["exportType"] = "json_data_export",
+                    ["tables"] = tables
+                };
+                var metadataJson = System.Text.Json.JsonSerializer.Serialize(metadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync(Path.Combine(backupDir, "_backup_metadata.json"), metadataJson);
+
+                _logger.LogInformation("Database export completed successfully ({Count} tables)", tables.Count);
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting database as JSON");
+                return (false, $"Database export failed: {ex.Message}");
             }
         }
 
@@ -592,47 +620,65 @@ namespace InvoiceApp.Infrastructure.Services
                 var builder = new SqlConnectionStringBuilder(connectionString);
                 var database = builder.InitialCatalog ?? "InvoiceApp";
 
-                // Copy backup file to SQL Server container accessible location
-                // For Docker, we need to copy to a location SQL Server can access
-                var sqlBackupPath = $"/var/opt/mssql/backup/{Path.GetFileName(backupFilePath)}";
-                
-                // Note: In Docker environment, we need to copy the file to SQL Server container
-                // This is a limitation - we would need docker exec or shared volume
-                // For now, we'll log a warning
-                _logger.LogWarning("Database restore requires file to be accessible by SQL Server container. File: {BackupFile}", backupFilePath);
+                // Connect to master — required when InvoiceApp was deleted
+                var masterBuilder = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = "master" };
 
-                using (var connection = new SqlConnection(connectionString))
+                var isDocker = File.Exists("/.dockerenv") ||
+                               !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"));
+                var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+                var sqlRestorePath = await ResolveSqlServerRestorePathAsync(
+                    backupFilePath, masterBuilder.ConnectionString, isWindows && !isDocker, isDocker);
+
+                using (var connection = new SqlConnection(masterBuilder.ConnectionString))
                 {
                     await connection.OpenAsync();
-                    
-                    // Set database to single user mode for restore
-                    var setSingleUserSql = $"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE";
-                    using (var command = new SqlCommand(setSingleUserSql, connection))
+
+                    var dbExists = await DatabaseExistsAsync(connection, database);
+                    _logger.LogInformation(
+                        "Restoring database {Database} (exists={Exists}) from {Path}",
+                        database, dbExists, sqlRestorePath);
+
+                    if (dbExists)
                     {
-                        await command.ExecuteNonQueryAsync();
+                        var setSingleUserSql = $"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE";
+                        using (var command = new SqlCommand(setSingleUserSql, connection))
+                        {
+                            await command.ExecuteNonQueryAsync();
+                        }
                     }
 
                     try
                     {
+                        var escapedPath = sqlRestorePath.Replace("'", "''");
                         var restoreSql = $@"
-                            RESTORE DATABASE [{database}] 
-                            FROM DISK = '{sqlBackupPath}' 
-                            WITH REPLACE, 
+                            RESTORE DATABASE [{database}]
+                            FROM DISK = N'{escapedPath}'
+                            WITH REPLACE,
                             STATS = 10";
 
                         using (var command = new SqlCommand(restoreSql, connection))
                         {
-                            command.CommandTimeout = 600; // 10 minutes timeout
+                            command.CommandTimeout = 600;
                             await command.ExecuteNonQueryAsync();
                         }
                     }
                     finally
                     {
-                        // Set database back to multi-user mode
-                        var setMultiUserSql = $"ALTER DATABASE [{database}] SET MULTI_USER";
-                        using (var command = new SqlCommand(setMultiUserSql, connection))
+                        if (dbExists)
                         {
-                            await command.ExecuteNonQueryAsync();
+                            try
+                            {
+                                var setMultiUserSql = $"ALTER DATABASE [{database}] SET MULTI_USER";
+                                using (var command = new SqlCommand(setMultiUserSql, connection))
+                                {
+                                    await command.ExecuteNonQueryAsync();
+                                }
+                            }
+                            catch (Exception multiUserEx)
+                            {
+                                _logger.LogWarning(multiUserEx, "Could not set database back to MULTI_USER");
+                            }
                         }
                     }
                 }
@@ -644,6 +690,260 @@ namespace InvoiceApp.Infrastructure.Services
                 _logger.LogError(ex, "Error restoring database");
                 return (false, ex.Message);
             }
+        }
+
+        private static async Task<bool> DatabaseExistsAsync(SqlConnection connection, string database)
+        {
+            const string sql = "SELECT COUNT(*) FROM sys.databases WHERE name = @name";
+            using var command = new SqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@name", database);
+            var result = await command.ExecuteScalarAsync();
+            return result != null && Convert.ToInt32(result) > 0;
+        }
+
+        private async Task<string> ResolveSqlServerRestorePathAsync(
+            string localBackupFilePath,
+            string masterConnectionString,
+            bool isWindowsLocal,
+            bool isDocker)
+        {
+            if (!File.Exists(localBackupFilePath))
+            {
+                throw new FileNotFoundException("Backup file not found", localBackupFilePath);
+            }
+
+            var fileName = Path.GetFileName(localBackupFilePath);
+
+            if (isDocker)
+            {
+                var sharedBackupDir = "/app/wwwroot/backups/shared";
+                if (!Directory.Exists(sharedBackupDir))
+                {
+                    Directory.CreateDirectory(sharedBackupDir);
+                }
+
+                var sharedBackupPath = Path.Combine(sharedBackupDir, fileName);
+                File.Copy(localBackupFilePath, sharedBackupPath, true);
+                return $"/var/opt/mssql/backup/{fileName}";
+            }
+
+            if (isWindowsLocal)
+            {
+                string? defaultBackupDir = null;
+                try
+                {
+                    using var connection = new SqlConnection(masterConnectionString);
+                    await connection.OpenAsync();
+                    using var cmd = new SqlCommand("SELECT SERVERPROPERTY('InstanceDefaultBackupPath')", connection);
+                    var result = await cmd.ExecuteScalarAsync();
+                    defaultBackupDir = result?.ToString();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not query InstanceDefaultBackupPath for restore");
+                }
+
+                if (!string.IsNullOrWhiteSpace(defaultBackupDir))
+                {
+                    var targetPath = Path.Combine(defaultBackupDir, fileName);
+                    File.Copy(localBackupFilePath, targetPath, true);
+                    _logger.LogInformation("Copied backup for restore to {Path}", targetPath);
+                    return targetPath;
+                }
+            }
+
+            return localBackupFilePath;
+        }
+
+        private async Task<(bool Success, string? ErrorMessage)> ImportDatabaseFromJsonAsync(
+            string dbBackupDir, string connectionString)
+        {
+            try
+            {
+                var builder = new SqlConnectionStringBuilder(connectionString);
+                var database = builder.InitialCatalog ?? "InvoiceApp";
+                var masterConnectionString = new SqlConnectionStringBuilder(connectionString)
+                {
+                    InitialCatalog = "master"
+                }.ConnectionString;
+
+                await EnsureDatabaseExistsAsync(masterConnectionString, database);
+                await _dbContext.Database.MigrateAsync();
+
+                builder.InitialCatalog = database;
+                using var connection = new SqlConnection(builder.ConnectionString);
+                await connection.OpenAsync();
+
+                _logger.LogInformation("Clearing existing data before JSON import...");
+                await ExecuteNonQueryAsync(connection, @"
+                    DECLARE @sql NVARCHAR(MAX) = N'';
+                    SELECT @sql += N'ALTER TABLE ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name) + N' NOCHECK CONSTRAINT ALL;'
+                    FROM sys.tables WHERE is_ms_shipped = 0;
+                    EXEC sp_executesql @sql;");
+
+                await ExecuteNonQueryAsync(connection, @"
+                    DECLARE @sql NVARCHAR(MAX) = N'';
+                    SELECT @sql += N'DELETE FROM ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name) + N';'
+                    FROM sys.tables WHERE is_ms_shipped = 0;
+                    EXEC sp_executesql @sql;");
+
+                var jsonFiles = Directory
+                    .GetFiles(dbBackupDir, "*.json")
+                    .Where(f => !string.Equals(Path.GetFileName(f), "_backup_metadata.json", StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                _logger.LogInformation("Importing {Count} table JSON files...", jsonFiles.Count);
+
+                foreach (var jsonFile in jsonFiles)
+                {
+                    if (!TryParseTableFromJsonFileName(Path.GetFileNameWithoutExtension(jsonFile), out var schema, out var tableName))
+                    {
+                        _logger.LogWarning("Skipping unrecognized JSON file: {File}", jsonFile);
+                        continue;
+                    }
+
+                    await ImportTableFromJsonAsync(connection, schema, tableName, jsonFile);
+                }
+
+                await ExecuteNonQueryAsync(connection, @"
+                    DECLARE @sql NVARCHAR(MAX) = N'';
+                    SELECT @sql += N'ALTER TABLE ' + QUOTENAME(SCHEMA_NAME(schema_id)) + N'.' + QUOTENAME(name) + N' WITH CHECK CHECK CONSTRAINT ALL;'
+                    FROM sys.tables WHERE is_ms_shipped = 0;
+                    EXEC sp_executesql @sql;");
+
+                _logger.LogInformation("JSON database import completed");
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error importing database from JSON");
+                return (false, ex.Message);
+            }
+        }
+
+        private async Task EnsureDatabaseExistsAsync(string masterConnectionString, string database)
+        {
+            using var connection = new SqlConnection(masterConnectionString);
+            await connection.OpenAsync();
+
+            if (await DatabaseExistsAsync(connection, database))
+            {
+                return;
+            }
+
+            _logger.LogInformation("Creating database {Database} for JSON restore...", database);
+            using var createCmd = new SqlCommand($"CREATE DATABASE [{database}]", connection);
+            await createCmd.ExecuteNonQueryAsync();
+        }
+
+        private static bool TryParseTableFromJsonFileName(string fileName, out string schema, out string tableName)
+        {
+            schema = "dbo";
+            tableName = fileName;
+            var underscore = fileName.IndexOf('_');
+            if (underscore <= 0 || underscore >= fileName.Length - 1)
+            {
+                return false;
+            }
+
+            schema = fileName[..underscore];
+            tableName = fileName[(underscore + 1)..];
+            return true;
+        }
+
+        private async Task ImportTableFromJsonAsync(
+            SqlConnection connection, string schema, string tableName, string jsonFilePath)
+        {
+            var json = await File.ReadAllTextAsync(jsonFilePath);
+            var rows = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(json);
+            if (rows == null || rows.Count == 0)
+            {
+                _logger.LogInformation("Skipping empty table {Schema}.{Table}", schema, tableName);
+                return;
+            }
+
+            var columns = rows[0].Keys.ToList();
+            var columnList = string.Join(", ", columns.Select(c => $"[{c}]"));
+            var hasIdentity = await TableHasIdentityAsync(connection, schema, tableName);
+
+            if (hasIdentity)
+            {
+                await ExecuteNonQueryAsync(connection,
+                    $"SET IDENTITY_INSERT [{schema}].[{tableName}] ON");
+            }
+
+            var inserted = 0;
+            foreach (var row in rows)
+            {
+                var parameters = new List<SqlParameter>();
+                var paramNames = new List<string>();
+                for (var i = 0; i < columns.Count; i++)
+                {
+                    var paramName = $"@p{i}";
+                    paramNames.Add(paramName);
+                    row.TryGetValue(columns[i], out var element);
+                    parameters.Add(new SqlParameter(paramName, ConvertJsonElement(element) ?? DBNull.Value));
+                }
+
+                var insertSql =
+                    $"INSERT INTO [{schema}].[{tableName}] ({columnList}) VALUES ({string.Join(", ", paramNames)})";
+                using var cmd = new SqlCommand(insertSql, connection);
+                cmd.CommandTimeout = 120;
+                cmd.Parameters.AddRange(parameters.ToArray());
+                await cmd.ExecuteNonQueryAsync();
+                inserted++;
+            }
+
+            if (hasIdentity)
+            {
+                await ExecuteNonQueryAsync(connection,
+                    $"SET IDENTITY_INSERT [{schema}].[{tableName}] OFF");
+            }
+
+            _logger.LogInformation("Imported {Schema}.{Table}: {Count} rows", schema, tableName, inserted);
+        }
+
+        private static async Task<bool> TableHasIdentityAsync(SqlConnection connection, string schema, string tableName)
+        {
+            const string sql = @"
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1 FROM sys.columns c
+                    INNER JOIN sys.tables t ON c.object_id = t.object_id
+                    INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE s.name = @schema AND t.name = @table AND c.is_identity = 1
+                ) THEN 1 ELSE 0 END";
+            using var cmd = new SqlCommand(sql, connection);
+            cmd.Parameters.AddWithValue("@schema", schema);
+            cmd.Parameters.AddWithValue("@table", tableName);
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null && Convert.ToInt32(result) == 1;
+        }
+
+        private static object? ConvertJsonElement(JsonElement element)
+        {
+            if (element.ValueKind == JsonValueKind.Undefined)
+            {
+                return DBNull.Value;
+            }
+
+            return element.ValueKind switch
+            {
+                JsonValueKind.Null => DBNull.Value,
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Number when element.TryGetInt64(out var longVal) => longVal,
+                JsonValueKind.Number => element.GetDecimal(),
+                JsonValueKind.String => element.GetString(),
+                _ => element.GetRawText()
+            };
+        }
+
+        private static async Task ExecuteNonQueryAsync(SqlConnection connection, string sql)
+        {
+            using var cmd = new SqlCommand(sql, connection);
+            cmd.CommandTimeout = 300;
+            await cmd.ExecuteNonQueryAsync();
         }
 
         private void CopyDirectory(string sourceDir, string destDir)

@@ -147,33 +147,36 @@ export const DashboardPage: React.FC = () => {
       let customersData: Customer[] = [];
       let invoicesData: Invoice[] = [];
 
-      if (customersResult.status === 'rejected') {
-        const err = customersResult.reason;
-        if (process.env.NODE_ENV === 'development') {
-          console.error('❌ Failed to load customers:', err?.response?.status, err?.message, err);
-        }
-        // Continue with empty customers - don't block dashboard
-      } else {
-        customersData = unwrapData(customersResult.value) as Customer[];
-      }
-
-      if (invoicesResult.status === 'rejected') {
-        const err = invoicesResult.reason;
-        if (process.env.NODE_ENV === 'development') {
-          console.error('❌ Failed to load invoices:', err?.response?.status, err?.message, err);
-        }
-        // If both fail, show error
         if (customersResult.status === 'rejected') {
-          const msg = err?.response?.status === 401
-            ? 'Session expired. Please log in again.'
-            : err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')
-              ? 'Request timed out. Check your connection.'
-              : 'Failed to load dashboard. Ensure the API is running and try again.';
-          throw new Error(msg);
+          const err = customersResult.reason;
+          if (process.env.NODE_ENV === 'development') {
+            console.error('❌ Failed to load customers:', err?.response?.status, err?.message, err);
+          }
+        } else {
+          customersData = unwrapData(customersResult.value) as Customer[];
         }
-      } else {
-        invoicesData = unwrapData(invoicesResult.value) as Invoice[];
-      }
+
+        if (invoicesResult.status === 'rejected') {
+          const err = invoicesResult.reason;
+          if (process.env.NODE_ENV === 'development') {
+            console.error('❌ Failed to load invoices:', err?.response?.status, err?.message, err);
+          }
+          // If both fail, show a helpful error
+          if (customersResult.status === 'rejected') {
+            const customersErr = customersResult.reason;
+            let msg = getApiErrorMessage(
+              err ?? customersErr,
+              'Failed to load dashboard. Ensure the API is running and try again.'
+            );
+            if (!err?.response && !customersErr?.response && import.meta.env.DEV) {
+              msg +=
+                ' Also start the UI: run "npm run dev" in the invoice-app folder, then open http://localhost:3000 (API: http://localhost:5001).';
+            }
+            throw new Error(msg);
+          }
+        } else {
+          invoicesData = unwrapData(invoicesResult.value) as Invoice[];
+        }
 
       // Remove duplicate invoices by id (keep first occurrence)
       const uniqueInvoices = Array.from(new Map(invoicesData.map(inv => [inv.id, inv])).values());

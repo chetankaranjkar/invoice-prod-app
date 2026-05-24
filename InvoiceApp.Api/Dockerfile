@@ -39,7 +39,10 @@ COPY --from=publish /app/publish .
 
 # Create directory for uploads
 RUN mkdir -p /app/wwwroot/uploads/logos && \
-    chmod 755 /app/wwwroot/uploads/logos
+    mkdir -p /app/wwwroot/backups/shared && \
+    chmod 755 /app/wwwroot/uploads/logos && \
+    chmod 777 /app/wwwroot/backups && \
+    chmod 777 /app/wwwroot/backups/shared
 
 # Expose port
 EXPOSE 8080

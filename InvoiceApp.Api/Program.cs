@@ -503,6 +503,23 @@ async Task InitializeBackupDirectoryAsync(WebApplication app)
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
+
+    // This initialization is only needed in Docker/Linux where SQL Server
+    // needs explicit directory permissions. Skip on Windows.
+    if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+    {
+        logger.LogInformation("Windows environment detected, skipping backup directory permission initialization");
+        
+        // Just ensure local wwwroot/backups directory exists
+        var backupsPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "backups");
+        if (!Directory.Exists(backupsPath))
+        {
+            Directory.CreateDirectory(backupsPath);
+            logger.LogInformation("Created local backup directory: {Path}", backupsPath);
+        }
+        return;
+    }
+
     var connectionString = Environment.GetEnvironmentVariable("CONNECTION_STRING") 
         ?? app.Configuration.GetConnectionString("DefaultConnection");
 
