@@ -142,7 +142,7 @@ export const InvoiceHierarchyRows: React.FC<InvoiceHierarchyRowsProps> = ({
                     </div>
                   )}
                   {isSub && item.affectTotal === false && (
-                    <div className="text-[9px] text-[#9ca3af] mt-0.5">Breakdown (non-billable)</div>
+                    <div className="text-[9px] text-[#9ca3af] mt-0.5">Other services</div>
                   )}
                 </div>
               </div>
