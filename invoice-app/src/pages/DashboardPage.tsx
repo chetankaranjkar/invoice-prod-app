@@ -13,6 +13,7 @@ import { InvoiceStatusBadge } from '../components/ui/Badge';
 import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage } from '../utils/helpers';
 import { useDateFormat } from '../hooks/useDateFormat';
 import { AddPaymentModal } from '../components/AddPaymentModal';
+import { UpdateInvoiceDateModal, UpdateInvoiceDateButton } from '../components/UpdateInvoiceDateModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { buildHtml2CanvasOnClone } from '../utils/pdfCapture';
@@ -47,6 +48,7 @@ export const DashboardPage: React.FC = () => {
   const [showPendingByUserModal, setShowPendingByUserModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [invoiceForDateUpdate, setInvoiceForDateUpdate] = useState<Invoice | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<'date' | 'invoiceNumber' | 'customer' | 'amount' | 'balance'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -639,6 +641,19 @@ export const DashboardPage: React.FC = () => {
     setShowPaymentModal(true);
   };
 
+  const handleInvoiceDateUpdated = (updated: Invoice) => {
+    setAllInvoices((prev) => prev.map((inv) => (inv.id === updated.id ? { ...inv, ...updated } : inv)));
+    setStats((prev) => ({
+      ...prev,
+      recentInvoices: prev.recentInvoices.map((inv) =>
+        inv.id === updated.id ? { ...inv, invoiceDate: updated.invoiceDate } : inv
+      ),
+    }));
+    if (selectedInvoice?.id === updated.id) {
+      setSelectedInvoice((prev) => (prev ? { ...prev, invoiceDate: updated.invoiceDate } : prev));
+    }
+  };
+
   const handleConfirmPayment = async (paymentData: {
     amountPaid: number;
     paymentMode: string;
@@ -1169,6 +1184,12 @@ export const DashboardPage: React.FC = () => {
                                 <DollarSign className="h-4 w-4" />
                               </button>
                             )}
+                            {userRole !== 'MasterUser' && (
+                              <UpdateInvoiceDateButton
+                                invoice={invoice}
+                                onClick={() => setInvoiceForDateUpdate(invoice)}
+                              />
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); navigate(`/invoices/edit/${invoice.id}`); }}
                               className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
@@ -1356,6 +1377,13 @@ export const DashboardPage: React.FC = () => {
           balanceAmount={selectedInvoiceForPayment.balanceAmount}
         />
       )}
+
+      <UpdateInvoiceDateModal
+        invoice={invoiceForDateUpdate}
+        isOpen={!!invoiceForDateUpdate}
+        onClose={() => setInvoiceForDateUpdate(null)}
+        onUpdated={handleInvoiceDateUpdated}
+      />
     </div>
   );
 };

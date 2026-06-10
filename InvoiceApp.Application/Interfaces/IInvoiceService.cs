@@ -11,6 +11,7 @@ namespace InvoiceApp.Application.Interfaces
     {
         Task<InvoiceDto> CreateInvoiceAsync(Guid userId, CreateInvoiceDto createInvoiceDto, string? userRole = null);
         Task<InvoiceDto> UpdateInvoiceAsync(int invoiceId, Guid userId, UpdateInvoiceDto updateInvoiceDto, string? userRole = null);
+        Task<InvoiceDto> UpdateInvoiceDateAsync(int invoiceId, Guid userId, UpdateInvoiceDateDto dto, string? userRole = null);
         Task<bool> DeleteInvoiceAsync(int invoiceId, Guid userId, string? userRole = null);
         Task<InvoiceDto> DuplicateInvoiceAsync(int invoiceId, Guid userId, string? userRole = null);
         Task<List<InvoiceDto>> GetUserInvoicesAsync(Guid userId);

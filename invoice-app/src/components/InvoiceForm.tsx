@@ -15,7 +15,7 @@ import {
 import type { InvoiceLineInput } from '../utils/invoiceCalculations';
 import { AddCustomerModal } from './AddCustomerModal';
 import { HierarchicalInvoiceItems } from './invoice/HierarchicalInvoiceItems';
-import { DateInput } from './dates';
+import { DateInputWithPicker, todayIsoDate } from './dates';
 import { InvoiceTemplateModal } from './InvoiceTemplateModal';
 import { ToWords } from 'to-words';
 
@@ -329,11 +329,12 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Invoice Date
             </label>
-            <DateInput
+            <DateInputWithPicker
               value={invoiceDate}
               onChange={(iso) => setInvoiceDate(iso)}
+              maxDate={todayIsoDate()}
               ariaLabel="Invoice date"
-              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 

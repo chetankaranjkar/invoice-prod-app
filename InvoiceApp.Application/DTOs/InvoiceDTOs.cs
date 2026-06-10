@@ -59,6 +59,12 @@ namespace InvoiceApp.Application.DTOs
         public string Status { get; set; } = "Unpaid";
     }
 
+    public class UpdateInvoiceDateDto
+    {
+        [JsonProperty("invoiceDate")]
+        public string InvoiceDate { get; set; } = null!;
+    }
+
     /// <summary>
     /// Company/seller info of the user who created the invoice.
     /// When admin views another user's invoice, this shows the creator's company details (not admin's).

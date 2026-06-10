@@ -193,6 +193,48 @@ namespace InvoiceApp.Api.Controllers
             }
         }
 
+        [HttpPatch("{id}/invoice-date")]
+        public async Task<ActionResult<InvoiceDto>> UpdateInvoiceDate(int id, UpdateInvoiceDateDto dto)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole))
+                return Unauthorized("User not authenticated");
+
+            if (userRole == "MasterUser")
+                return Forbid("MasterUser cannot update invoices.");
+
+            try
+            {
+                var originalInvoice = await _invoiceService.GetInvoiceByIdAsync(id, userId.Value, userRole);
+                var invoice = await _invoiceService.UpdateInvoiceDateAsync(id, userId.Value, dto, userRole);
+
+                await _auditService.LogActionAsync(
+                    userId.Value,
+                    _userContext.GetCurrentUserName(),
+                    _userContext.GetCurrentUserEmail(),
+                    "UPDATE",
+                    "Invoice",
+                    invoice.Id.ToString(),
+                    invoice.InvoiceNumber,
+                    originalInvoice != null ? new { originalInvoice.InvoiceDate } : null,
+                    new { invoice.InvoiceDate },
+                    $"Updated invoice date for {invoice.InvoiceNumber}",
+                    null,
+                    HttpContext);
+
+                return Ok(invoice);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
+        }
+
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteInvoice(int id)
         {

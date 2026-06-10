@@ -19,6 +19,7 @@ import {
   productToInvoiceLine,
 } from '../../utils/invoiceCalculations';
 import type { InvoiceLineInput } from '../../utils/invoiceCalculations';
+import { ExpandableAmountInput } from './ExpandableAmountInput';
 
 const parentFieldBorder =
   '!border-blue-600 focus:!border-blue-600 focus:ring-blue-500';
@@ -26,6 +27,8 @@ const childFieldBorder =
   '!border-sky-300 focus:!border-sky-400 focus:ring-sky-300';
 const parentInputClass = `w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${parentFieldBorder}`;
 const childInputClass = `w-full px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${childFieldBorder}`;
+const parentRateClass = `px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${parentFieldBorder}`;
+const childRateClass = `px-2 py-1 text-sm border rounded focus:outline-none focus:ring-2 ${childFieldBorder}`;
 
 interface HierarchicalInvoiceItemsProps {
   items: Partial<InvoiceItem>[];
@@ -190,14 +193,11 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
             />
           </td>
         )}
-        <td className="py-2 w-24">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
+        <td className="relative overflow-visible py-2 w-24">
+          <ExpandableAmountInput
             value={child.rate ?? 0}
-            onChange={(e) => updateLine(lineKey, 'rate', Number(e.target.value))}
-            className={childInputClass}
+            onChange={(v) => updateLine(lineKey, 'rate', v)}
+            className={childRateClass}
           />
         </td>
         {!hideGst && (
@@ -248,14 +248,14 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
         </button>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+      <div className="overflow-x-auto overflow-y-visible border border-slate-200 rounded-lg">
         <table className="w-full text-sm">
           <thead className="bg-slate-100 text-xs uppercase text-slate-600">
             <tr>
               <th className="w-8" />
               <th className={`text-left py-2 px-2 ${productColClass}`}>Product</th>
               {!disableQuantity && <th className="w-20 py-2">Qty</th>}
-              <th className="w-24 py-2">Rate</th>
+              <th className="w-24 min-w-[5.5rem] py-2 text-right">Rate</th>
               {!hideGst && <th className="w-20 py-2">GST %</th>}
               {!hideGst && <th className="w-24 py-2 text-right">Line</th>}
               <th className="w-20 py-2" />
@@ -301,14 +301,11 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
                         />
                       </td>
                     )}
-                    <td className="py-2">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
+                    <td className="relative overflow-visible py-2 w-24">
+                      <ExpandableAmountInput
                         value={parent.rate ?? 0}
-                        onChange={(e) => updateLine(lineKey, 'rate', Number(e.target.value))}
-                        className={`${parentInputClass} font-semibold`}
+                        onChange={(v) => updateLine(lineKey, 'rate', v)}
+                        className={`${parentRateClass} font-semibold`}
                       />
                     </td>
                     {!hideGst && (

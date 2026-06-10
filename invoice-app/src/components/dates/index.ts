@@ -8,3 +8,7 @@
 
 export type { DateInputProps } from './DateInput';
 export { DateInput } from './DateInput';
+export type { DateInputWithPickerProps } from './DateInputWithPicker';
+export { DateInputWithPicker } from './DateInputWithPicker';
+export type { CalendarPopoverProps } from './CalendarPopover';
+export { CalendarPopover, todayIsoDate, compareIsoDates } from './CalendarPopover';

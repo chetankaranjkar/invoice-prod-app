@@ -16,6 +16,7 @@ import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvo
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { AddPaymentModal } from '../components/AddPaymentModal';
+import { UpdateInvoiceDateModal, UpdateInvoiceDateButton } from '../components/UpdateInvoiceDateModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
 import { buildHtml2CanvasOnClone } from '../utils/pdfCapture';
@@ -46,6 +47,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
   const [loadingInvoiceDetails, setLoadingInvoiceDetails] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
+  const [invoiceForDateUpdate, setInvoiceForDateUpdate] = useState<Invoice | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -317,6 +319,15 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
   const handleAddPaymentClick = (invoice: Invoice) => {
     setSelectedInvoiceForPayment(invoice);
     setShowPaymentModal(true);
+  };
+
+  const handleInvoiceDateUpdated = (updated: Invoice) => {
+    setCustomerInvoices((prev) =>
+      prev.map((inv) => (inv.id === updated.id ? { ...inv, ...updated } : inv))
+    );
+    if (selectedInvoice?.id === updated.id) {
+      setSelectedInvoice((prev) => (prev ? { ...prev, invoiceDate: updated.invoiceDate } : prev));
+    }
   };
 
   const handleConfirmPayment = async (paymentData: {
@@ -1090,6 +1101,13 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                               <Eye className="h-4 w-4" />
                               View
                             </button>
+                            {userRole !== 'MasterUser' && (
+                              <UpdateInvoiceDateButton
+                                invoice={inv}
+                                onClick={() => setInvoiceForDateUpdate(inv)}
+                                className="px-2 py-1"
+                              />
+                            )}
                             {inv.balanceAmount > 0 && (
                               <button
                                 onClick={(e) => {
@@ -1240,6 +1258,13 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
           </div>
         </div>
       )}
+
+      <UpdateInvoiceDateModal
+        invoice={invoiceForDateUpdate}
+        isOpen={!!invoiceForDateUpdate}
+        onClose={() => setInvoiceForDateUpdate(null)}
+        onUpdated={handleInvoiceDateUpdated}
+      />
     </>
   );
 };

@@ -64,6 +64,8 @@ namespace InvoiceApp.Application.Services
             DateTime invoiceDate;
             if (!string.IsNullOrWhiteSpace(createInvoiceDto.InvoiceDate) && DateTime.TryParse(createInvoiceDto.InvoiceDate, out var parsedDate))
             {
+                if (parsedDate.Date > DateTime.Today)
+                    throw new ArgumentException("Invoice date cannot be in the future.");
                 invoiceDate = parsedDate.Date;
             }
             else
@@ -500,6 +502,45 @@ namespace InvoiceApp.Application.Services
             }
 
             return _mapper.Map<InvoiceDto>(invoice);
+        }
+
+        // -----------------------------------------------
+        // Update Invoice Date only
+        // -----------------------------------------------
+        public async Task<InvoiceDto> UpdateInvoiceDateAsync(
+            int invoiceId, Guid userId, UpdateInvoiceDateDto dto, string? userRole = null)
+        {
+            if (userRole == "MasterUser")
+                throw new UnauthorizedAccessException("MasterUser cannot update invoices.");
+
+            if (string.IsNullOrWhiteSpace(dto.InvoiceDate) || !DateTime.TryParse(dto.InvoiceDate, out var parsedDate))
+                throw new ArgumentException("Invalid invoice date. Use YYYY-MM-DD.");
+
+            if (parsedDate.Date > DateTime.Today)
+                throw new ArgumentException("Invoice date cannot be in the future.");
+
+            var invoice = await _invoiceRepository.GetByIdAsync(invoiceId);
+            if (invoice == null)
+                throw new ArgumentException("Invoice not found");
+
+            if (!CanModifyInvoice(invoice, userId, userRole))
+                throw new UnauthorizedAccessException("You don't have permission to update this invoice");
+
+            invoice.InvoiceDate = parsedDate.Date;
+            await _invoiceRepository.UpdateAsync(invoice);
+
+            return _mapper.Map<InvoiceDto>(invoice);
+        }
+
+        private static bool CanModifyInvoice(Invoice invoice, Guid userId, string? userRole)
+        {
+            if (userRole == "MasterUser")
+                return true;
+
+            if (userRole == "Admin")
+                return invoice.UserId == userId || (invoice.User != null && invoice.User.CreatedBy == userId);
+
+            return invoice.UserId == userId;
         }
 
         // -----------------------------------------------
