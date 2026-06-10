@@ -125,8 +125,18 @@ namespace InvoiceApp.Application.DTOs
 
     public class PaymentDto
     {
+        public int Id { get; set; }
         public decimal AmountPaid { get; set; }
         public decimal WaveAmount { get; set; } = 0; // Wave off amount
+        public DateTime PaymentDate { get; set; }
+        public string? PaymentMode { get; set; }
+        public string? Remarks { get; set; }
+    }
+
+    public class UpdatePaymentDto
+    {
+        public decimal AmountPaid { get; set; }
+        public decimal WaveAmount { get; set; } = 0;
         public string? PaymentMode { get; set; }
         public string? Remarks { get; set; }
     }

@@ -126,7 +126,7 @@ agent.interceptors.response.use(
         networkError: error.message,
       };
       console.error('❌ API Error:', errorDetails);
-      
+
       // Show helpful message for common issues
       if (!error.response) {
         console.error('💡 Network Error - Possible causes:');
@@ -264,6 +264,8 @@ export const api = {
     delete: (id: number) => agent.delete<any>(`Invoices/${id}`),
     duplicate: (id: number) => agent.post<any>(`Invoices/${id}/duplicate`, {}),
     addPayment: (id: number, data: any) => agent.post(`Invoices/${id}/payments`, data),
+    updatePayment: (invoiceId: number, paymentId: number, data: any) =>
+      agent.put(`Invoices/${invoiceId}/payments/${paymentId}`, data),
   },
 
   // Invoice Template APIs

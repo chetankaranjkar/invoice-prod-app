@@ -411,7 +411,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
 
     // Create worksheet
     const ws = XLSX.utils.json_to_sheet(templateData);
-    
+
     // Set column widths for better readability
     const colWidths = [
       { wch: 25 }, // Company Name
@@ -490,10 +490,10 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         const rowNum = index + 2; // +2 because index is 0-based and Excel rows start at 1, plus header row
 
         // Try to find company name in various possible column names (case-insensitive)
-        const companyName = 
-          row['Company Name'] || 
-          row['CompanyName'] || 
-          row['company name'] || 
+        const companyName =
+          row['Company Name'] ||
+          row['CompanyName'] ||
+          row['company name'] ||
           row['companyname'] ||
           row['Customer Name'] ||
           row['CustomerName'] ||
@@ -534,7 +534,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         // Validate GST Number if provided
         if (gstNumber) {
           const gstLower = gstNumber.toLowerCase();
-          
+
           // Check for duplicate GST within Excel file
           if (seenGstNumbers.has(gstLower)) {
             errors.push(`Row ${rowNum}: Duplicate GST Number '${gstNumber}' found in Excel file`);
@@ -553,7 +553,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         // Validate PAN Number if provided
         if (panNumber) {
           const panUpper = panNumber.toUpperCase();
-          
+
           // Check for duplicate PAN within Excel file
           if (seenPanNumbers.has(panUpper)) {
             errors.push(`Row ${rowNum}: Duplicate PAN Number '${panNumber}' found in Excel file`);
@@ -769,123 +769,123 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
               </div>
               {userRole !== 'MasterUser' && (
                 <div className="flex items-center gap-2 flex-wrap shrink-0">
-                <button
-                  onClick={handleDownloadTemplate}
-                  className="ui-btn-secondary ui-btn-sm"
-                  title="Download Excel template with sample data"
-                >
-                  <Download className="h-4 w-4" /> Template
-                </button>
-                <button
-                  onClick={handleImportClick}
-                  disabled={importing}
-                  className="ui-btn-secondary ui-btn-sm"
-                  title="Import customers from Excel file (only company name required)"
-                >
-                  <Upload className="h-4 w-4" /> {importing ? 'Importing…' : 'Import'}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  onChange={handleFileImport}
-                  style={{ display: 'none' }}
-                  aria-label="Upload customers file"
-                />
-                <button
-                  onClick={() => setShowAddCustomer(true)}
-                  className="ui-btn-primary"
-                >
-                  <UserPlus className="h-4 w-4" /> Add Customer
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={handleDownloadTemplate}
+                    className="ui-btn-secondary ui-btn-sm"
+                    title="Download Excel template with sample data"
+                  >
+                    <Download className="h-4 w-4" /> Template
+                  </button>
+                  <button
+                    onClick={handleImportClick}
+                    disabled={importing}
+                    className="ui-btn-secondary ui-btn-sm"
+                    title="Import customers from Excel file (only company name required)"
+                  >
+                    <Upload className="h-4 w-4" /> {importing ? 'Importing…' : 'Import'}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileImport}
+                    style={{ display: 'none' }}
+                    aria-label="Upload customers file"
+                  />
+                  <button
+                    onClick={() => setShowAddCustomer(true)}
+                    className="ui-btn-primary"
+                  >
+                    <UserPlus className="h-4 w-4" /> Add Customer
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
           {customersInView.length > 0 && customersListLayout === 'cards' ? (
-          <ul
-            className="customers-grid grid gap-4 list-none m-0 p-0 pb-10"
-            style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 268px), 1fr))',
-            }}
-          >
-            {customersInView.map((customer) => {
-              const customerBalance = getCustomerBalance(customer.id);
-              const customerStatus = getCustomerStatus(customer.id);
+            <ul
+              className="customers-grid grid gap-4 list-none m-0 p-0 pb-10"
+              style={{
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 268px), 1fr))',
+              }}
+            >
+              {customersInView.map((customer) => {
+                const customerBalance = getCustomerBalance(customer.id);
+                const customerStatus = getCustomerStatus(customer.id);
 
-              return (
-                <li key={customer.id} className="min-w-0">
-                <div
-                  className="ui-card ui-card-hover h-full min-w-0 cursor-pointer relative p-5 flex flex-col"
-                  onClick={() => handleViewInvoices(customer)}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center min-w-0 flex-1">
-                      <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3 shrink-0">
-                        <Users className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-semibold text-slate-900 truncate">{customer.customerName}</h3>
-                        {(userRole === 'Admin' && (customer.userName || customer.userEmail)) && (
-                          <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                            Owner: {customer.userName || customer.userEmail}
-                          </p>
-                        )}
-                        {customer.isSharedWithMe && (
-                          <span className="ui-badge-info mt-1 text-[10px]">Shared with me</span>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => handleEditCustomer(customer, e)}
-                      className="p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
-                      title="Edit Customer"
+                return (
+                  <li key={customer.id} className="min-w-0">
+                    <div
+                      className="ui-card ui-card-hover h-full min-w-0 cursor-pointer relative p-5 flex flex-col"
+                      onClick={() => handleViewInvoices(customer)}
                     >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                  </div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center min-w-0 flex-1">
+                          <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3 shrink-0">
+                            <Users className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-semibold text-slate-900 truncate">{customer.customerName}</h3>
+                            {(userRole === 'Admin' && (customer.userName || customer.userEmail)) && (
+                              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                Owner: {customer.userName || customer.userEmail}
+                              </p>
+                            )}
+                            {customer.isSharedWithMe && (
+                              <span className="ui-badge-info mt-1 text-[10px]">Shared with me</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => handleEditCustomer(customer, e)}
+                          className="p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors shrink-0"
+                          title="Edit Customer"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                      </div>
 
-                  <div className="space-y-1.5 text-xs text-slate-600">
-                    {customer.email && (
-                      <div className="flex items-center gap-2 truncate">
-                        <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{customer.email}</span>
+                      <div className="space-y-1.5 text-xs text-slate-600">
+                        {customer.email && (
+                          <div className="flex items-center gap-2 truncate">
+                            <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{customer.email}</span>
+                          </div>
+                        )}
+                        {customer.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            {customer.phone}
+                          </div>
+                        )}
+                        {customer.gstNumber && (
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-slate-400">GST:</span>
+                            <span className="font-mono text-slate-700">{customer.gstNumber}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {customer.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        {customer.phone}
-                      </div>
-                    )}
-                    {customer.gstNumber && (
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="text-slate-400">GST:</span>
-                        <span className="font-mono text-slate-700">{customer.gstNumber}</span>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
-                    <span className={customerStatus === 'paid' ? 'ui-badge-success' : 'ui-badge-danger'}>
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
-                      {customerStatus === 'paid' ? 'Paid' : 'Unpaid'}
-                    </span>
-                    <div className="flex min-w-0 items-center gap-1">
-                      <IndianRupee className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span
-                        className={`min-w-0 truncate tabular-nums ${customerBalance > 0 ? 'text-red-600 font-semibold text-sm' : 'text-emerald-600 font-semibold text-sm'}`}
-                      >
-                        {formatCurrency(customerBalance)}
-                      </span>
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
+                        <span className={customerStatus === 'paid' ? 'ui-badge-success' : 'ui-badge-danger'}>
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
+                          {customerStatus === 'paid' ? 'Paid' : 'Unpaid'}
+                        </span>
+                        <div className="flex min-w-0 items-center gap-1">
+                          <IndianRupee className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          <span
+                            className={`min-w-0 truncate tabular-nums ${customerBalance > 0 ? 'text-red-600 font-semibold text-sm' : 'text-emerald-600 font-semibold text-sm'}`}
+                          >
+                            {formatCurrency(customerBalance)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                </li>
-              );
-            })}
-          </ul>
+                  </li>
+                );
+              })}
+            </ul>
           ) : null}
 
           {customersInView.length > 0 && customersListLayout === 'grid' ? (
@@ -1108,7 +1108,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                                 className="px-2 py-1"
                               />
                             )}
-                            {inv.balanceAmount > 0 && (
+                            {(inv.balanceAmount > 0 || inv.status === 'Partially Paid' || inv.paidAmount > 0) && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1116,7 +1116,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                                 }}
                                 className={`px-3 py-1 ${themeColors.success} text-white rounded ${themeColors.successHover}`}
                               >
-                                Add Payment
+                                {inv.balanceAmount > 0 ? 'Add Payment' : 'Payments'}
                               </button>
                             )}
                           </div>
@@ -1142,7 +1142,13 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
             setSelectedInvoiceForPayment(null);
           }}
           onConfirm={handleConfirmPayment}
+          onPaymentsChanged={async () => {
+            if (selectedCustomer) await handleViewInvoices(selectedCustomer);
+            await loadData();
+          }}
+          invoiceId={selectedInvoiceForPayment.id}
           invoiceNumber={selectedInvoiceForPayment.invoiceNumber}
+          grandTotal={selectedInvoiceForPayment.grandTotal}
           balanceAmount={selectedInvoiceForPayment.balanceAmount}
         />
       )}

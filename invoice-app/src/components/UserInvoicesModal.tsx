@@ -202,13 +202,13 @@ export const UserInvoicesModal: React.FC<UserInvoicesModalProps> = ({
                           </span>
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          {invoice.balanceAmount > 0 && (
+                          {(invoice.balanceAmount > 0 || invoice.status === 'Partially Paid' || invoice.paidAmount > 0) && (
                             <button
                               onClick={() => handleAddPayment(invoice)}
                               className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors"
                             >
                               <DollarSign className="h-3 w-3 mr-1" />
-                              Add Payment
+                              {invoice.balanceAmount > 0 ? 'Add Payment' : 'Payments'}
                             </button>
                           )}
                         </td>
@@ -231,7 +231,10 @@ export const UserInvoicesModal: React.FC<UserInvoicesModalProps> = ({
             setSelectedInvoice(null);
           }}
           onConfirm={handlePaymentAdded}
+          onPaymentsChanged={loadInvoices}
+          invoiceId={selectedInvoice.id}
           invoiceNumber={selectedInvoice.invoiceNumber}
+          grandTotal={selectedInvoice.grandTotal}
           balanceAmount={selectedInvoice.balanceAmount}
         />
       )}

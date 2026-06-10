@@ -284,30 +284,7 @@ namespace InvoiceApp.Application.Services
             if (invoice == null)
                 return false;
 
-            // Check permissions
-            bool canAddPayment = false;
-            if (userRole == "MasterUser")
-            {
-                canAddPayment = true; // MasterUser can add payment to any invoice
-            }
-            else if (userRole == "Admin")
-            {
-                // Admin can add payment to invoices from users they created or their own
-                if (invoice.UserId == userId)
-                {
-                    canAddPayment = true;
-                }
-                else if (invoice.User != null && invoice.User.CreatedBy == userId)
-                {
-                    canAddPayment = true;
-                }
-            }
-            else if (invoice.UserId == userId)
-            {
-                canAddPayment = true; // Regular user can add payment to their own invoices
-            }
-
-            if (!canAddPayment)
+            if (!CanManagePayments(invoice, userId, userRole))
                 return false;
 
             // Calculate total deduction (amount paid + wave amount)
@@ -347,59 +324,57 @@ namespace InvoiceApp.Application.Services
             };
 
             invoice.Payments.Add(payment);
-            // Update paid amount and wave amount separately
-            invoice.PaidAmount += paymentDto.AmountPaid;
-            invoice.WaveAmount += paymentDto.WaveAmount;
-            
-            // Round paid and wave amounts to avoid precision issues
-            invoice.PaidAmount = Math.Round(invoice.PaidAmount, 2);
-            invoice.WaveAmount = Math.Round(invoice.WaveAmount, 2);
-            
-            // Recalculate balance from all payments to ensure accuracy
-            var totalPaidFromPayments = invoice.Payments.Sum(p => p.AmountPaid);
-            var totalWaveFromPayments = invoice.Payments.Sum(p => p.WaveAmount);
-            
-            // Use the sum from payments to ensure consistency
-            invoice.PaidAmount = Math.Round(totalPaidFromPayments, 2);
-            invoice.WaveAmount = Math.Round(totalWaveFromPayments, 2);
-            
-            // Balance = GrandTotal - (PaidAmount + WaveAmount)
-            invoice.BalanceAmount = invoice.GrandTotal - (invoice.PaidAmount + invoice.WaveAmount);
-            
-            // Round to 2 decimal places to avoid floating point precision issues
-            invoice.BalanceAmount = Math.Round(invoice.BalanceAmount, 2);
-            
-            // If balance is very close to zero (within 0.01), set it to zero
-            if (Math.Abs(invoice.BalanceAmount) < 0.01m)
+            RecalculateInvoicePaymentTotals(invoice);
+            await UpdateCustomerBalanceForInvoiceAsync(invoice, userId);
+            await _invoiceRepository.UpdateAsync(invoice);
+            return true;
+        }
+
+        // -----------------------------------------------
+        // Update payment (partial payments only)
+        // -----------------------------------------------
+        public async Task<bool> UpdatePaymentAsync(int invoiceId, int paymentId, Guid userId, UpdatePaymentDto paymentDto, string? userRole = null)
+        {
+            var invoice = await _invoiceRepository.GetByIdAsync(invoiceId);
+            if (invoice == null)
+                return false;
+
+            if (!CanManagePayments(invoice, userId, userRole))
+                return false;
+
+            var payment = invoice.Payments.FirstOrDefault(p => p.Id == paymentId);
+            if (payment == null)
+                return false;
+
+            var isPartialPaymentScenario = invoice.Status == "Partially Paid" || invoice.Payments.Count > 1;
+            if (!isPartialPaymentScenario)
+                throw new InvalidOperationException("Payment can only be edited for partially paid invoices.");
+
+            if (paymentDto.AmountPaid < 0 || paymentDto.WaveAmount < 0)
+                throw new InvalidOperationException("Payment amounts cannot be negative.");
+
+            if (paymentDto.AmountPaid + paymentDto.WaveAmount <= 0)
+                throw new InvalidOperationException("Payment amount or wave must be greater than zero.");
+
+            var otherPaid = invoice.Payments.Where(p => p.Id != paymentId).Sum(p => p.AmountPaid);
+            var otherWave = invoice.Payments.Where(p => p.Id != paymentId).Sum(p => p.WaveAmount);
+            var newTotal = otherPaid + otherWave + paymentDto.AmountPaid + paymentDto.WaveAmount;
+
+            if (newTotal > invoice.GrandTotal)
             {
-                invoice.BalanceAmount = 0;
+                var maxAllowed = invoice.GrandTotal - otherPaid - otherWave;
+                throw new InvalidOperationException(
+                    $"Total payments cannot exceed invoice amount (₹{invoice.GrandTotal:F2}). Maximum allowed for this payment: ₹{maxAllowed:F2}");
             }
 
-            // Update status - don't change if it's Draft or Sent, otherwise update based on payment
-            if (invoice.Status != "Draft" && invoice.Status != "Sent")
-            {
-                if (invoice.BalanceAmount <= 0)
-                {
-                    invoice.Status = "Paid";
-                    invoice.BalanceAmount = 0; // Ensure balance is exactly 0 when paid
-                }
-                else if (invoice.PaidAmount > 0)
-                    invoice.Status = "Partially Paid";
-                else
-                    invoice.Status = "Unpaid";
-            }
+            payment.AmountPaid = paymentDto.AmountPaid;
+            payment.WaveAmount = paymentDto.WaveAmount;
+            payment.PaymentMode = paymentDto.PaymentMode;
+            payment.Remarks = paymentDto.Remarks;
+            payment.UpdatedAt = DateTime.UtcNow;
 
-            // Update customer balance
-            var customer = await _customerRepository.GetCustomerByIdAsync(invoice.CustomerId,userId);
-            if (customer != null)
-            {
-                var newBalance = (await _invoiceRepository.GetByUserIdAsync(userId))
-                    .Where(i => i.CustomerId == customer.Id)
-                    .Sum(i => i.BalanceAmount);
-
-                await _customerRepository.UpdateCustomerBalanceAsync(invoice.CustomerId, newBalance);
-            }
-
+            RecalculateInvoicePaymentTotals(invoice);
+            await UpdateCustomerBalanceForInvoiceAsync(invoice, userId);
             await _invoiceRepository.UpdateAsync(invoice);
             return true;
         }
@@ -704,6 +679,59 @@ namespace InvoiceApp.Application.Services
             }
 
             return _mapper.Map<InvoiceDto>(createdInvoice);
+        }
+
+        private static bool CanManagePayments(Invoice invoice, Guid userId, string? userRole)
+        {
+            if (userRole == "MasterUser")
+                return true;
+
+            if (userRole == "Admin")
+            {
+                if (invoice.UserId == userId)
+                    return true;
+                if (invoice.User != null && invoice.User.CreatedBy == userId)
+                    return true;
+                return false;
+            }
+
+            return invoice.UserId == userId;
+        }
+
+        private static void RecalculateInvoicePaymentTotals(Invoice invoice)
+        {
+            invoice.PaidAmount = Math.Round(invoice.Payments.Sum(p => p.AmountPaid), 2);
+            invoice.WaveAmount = Math.Round(invoice.Payments.Sum(p => p.WaveAmount), 2);
+            invoice.BalanceAmount = Math.Round(invoice.GrandTotal - (invoice.PaidAmount + invoice.WaveAmount), 2);
+
+            if (Math.Abs(invoice.BalanceAmount) < 0.01m)
+                invoice.BalanceAmount = 0;
+
+            if (invoice.Status != "Draft" && invoice.Status != "Sent")
+            {
+                if (invoice.BalanceAmount <= 0)
+                {
+                    invoice.Status = "Paid";
+                    invoice.BalanceAmount = 0;
+                }
+                else if (invoice.PaidAmount > 0 || invoice.WaveAmount > 0)
+                    invoice.Status = "Partially Paid";
+                else
+                    invoice.Status = "Unpaid";
+            }
+        }
+
+        private async Task UpdateCustomerBalanceForInvoiceAsync(Invoice invoice, Guid userId)
+        {
+            var customer = await _customerRepository.GetCustomerByIdAsync(invoice.CustomerId, userId);
+            if (customer == null)
+                return;
+
+            var newBalance = (await _invoiceRepository.GetByUserIdAsync(invoice.UserId))
+                .Where(i => i.CustomerId == customer.Id)
+                .Sum(i => i.BalanceAmount);
+
+            await _customerRepository.UpdateCustomerBalanceAsync(invoice.CustomerId, newBalance);
         }
 
         private static void NormalizeInvoiceItems(List<InvoiceItemDto> items)

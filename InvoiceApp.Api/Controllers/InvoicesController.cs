@@ -141,6 +141,44 @@ namespace InvoiceApp.Api.Controllers
             return Ok(new { message = "Payment added successfully" });
         }
 
+        [HttpPut("{id}/payments/{paymentId}")]
+        public async Task<ActionResult> UpdatePayment(int id, int paymentId, UpdatePaymentDto paymentDto)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole))
+                return Unauthorized("User not authenticated");
+
+            var invoice = await _invoiceService.GetInvoiceByIdAsync(id, userId.Value, userRole);
+
+            try
+            {
+                var result = await _invoiceService.UpdatePaymentAsync(id, paymentId, userId.Value, paymentDto, userRole);
+                if (!result)
+                    return NotFound(new { message = "Invoice or payment not found" });
+
+                await _auditService.LogActionAsync(
+                    userId.Value,
+                    _userContext.GetCurrentUserName(),
+                    _userContext.GetCurrentUserEmail(),
+                    "UPDATE_PAYMENT",
+                    "Payment",
+                    paymentId.ToString(),
+                    invoice?.InvoiceNumber ?? id.ToString(),
+                    null,
+                    new { InvoiceId = id, PaymentId = paymentId, paymentDto.AmountPaid, paymentDto.WaveAmount, paymentDto.PaymentMode, paymentDto.Remarks },
+                    $"Updated payment #{paymentId} on invoice {invoice?.InvoiceNumber ?? id.ToString()}",
+                    null,
+                    HttpContext);
+
+                return Ok(new { message = "Payment updated successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPut("{id}")]
         public async Task<ActionResult<InvoiceDto>> UpdateInvoice(int id, UpdateInvoiceDto updateInvoiceDto)
         {

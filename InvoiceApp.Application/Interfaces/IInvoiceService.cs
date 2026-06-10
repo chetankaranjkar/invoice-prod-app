@@ -19,5 +19,6 @@ namespace InvoiceApp.Application.Interfaces
         Task<List<InvoiceDto>> GetAllInvoicesAsync(); // Get all invoices (for MasterUser)
         Task<InvoiceDto?> GetInvoiceByIdAsync(int id, Guid userId, string? userRole = null);
         Task<bool> AddPaymentAsync(int invoiceId, Guid userId, PaymentDto paymentDto, string? userRole = null);
+        Task<bool> UpdatePaymentAsync(int invoiceId, int paymentId, Guid userId, UpdatePaymentDto paymentDto, string? userRole = null);
     }
 }

@@ -149,36 +149,36 @@ export const DashboardPage: React.FC = () => {
       let customersData: Customer[] = [];
       let invoicesData: Invoice[] = [];
 
-        if (customersResult.status === 'rejected') {
-          const err = customersResult.reason;
-          if (process.env.NODE_ENV === 'development') {
-            console.error('❌ Failed to load customers:', err?.response?.status, err?.message, err);
-          }
-        } else {
-          customersData = unwrapData(customersResult.value) as Customer[];
+      if (customersResult.status === 'rejected') {
+        const err = customersResult.reason;
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ Failed to load customers:', err?.response?.status, err?.message, err);
         }
+      } else {
+        customersData = unwrapData(customersResult.value) as Customer[];
+      }
 
-        if (invoicesResult.status === 'rejected') {
-          const err = invoicesResult.reason;
-          if (process.env.NODE_ENV === 'development') {
-            console.error('❌ Failed to load invoices:', err?.response?.status, err?.message, err);
-          }
-          // If both fail, show a helpful error
-          if (customersResult.status === 'rejected') {
-            const customersErr = customersResult.reason;
-            let msg = getApiErrorMessage(
-              err ?? customersErr,
-              'Failed to load dashboard. Ensure the API is running and try again.'
-            );
-            if (!err?.response && !customersErr?.response && import.meta.env.DEV) {
-              msg +=
-                ' Also start the UI: run "npm run dev" in the invoice-app folder, then open http://localhost:3000 (API: http://localhost:5001).';
-            }
-            throw new Error(msg);
-          }
-        } else {
-          invoicesData = unwrapData(invoicesResult.value) as Invoice[];
+      if (invoicesResult.status === 'rejected') {
+        const err = invoicesResult.reason;
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ Failed to load invoices:', err?.response?.status, err?.message, err);
         }
+        // If both fail, show a helpful error
+        if (customersResult.status === 'rejected') {
+          const customersErr = customersResult.reason;
+          let msg = getApiErrorMessage(
+            err ?? customersErr,
+            'Failed to load dashboard. Ensure the API is running and try again.'
+          );
+          if (!err?.response && !customersErr?.response && import.meta.env.DEV) {
+            msg +=
+              ' Also start the UI: run "npm run dev" in the invoice-app folder, then open http://localhost:3000 (API: http://localhost:5001).';
+          }
+          throw new Error(msg);
+        }
+      } else {
+        invoicesData = unwrapData(invoicesResult.value) as Invoice[];
+      }
 
       // Remove duplicate invoices by id (keep first occurrence)
       const uniqueInvoices = Array.from(new Map(invoicesData.map(inv => [inv.id, inv])).values());
@@ -325,9 +325,9 @@ export const DashboardPage: React.FC = () => {
   const trimmedCustomerInvoice = invoiceCustomerFilter.trim();
   const invoiceFilterExactCustomer = trimmedCustomerInvoice
     ? customers.find(
-        (c) =>
-          c.customerName.trim().toLowerCase() === trimmedCustomerInvoice.toLowerCase(),
-      )
+      (c) =>
+        c.customerName.trim().toLowerCase() === trimmedCustomerInvoice.toLowerCase(),
+    )
     : undefined;
 
   // Apply filters
@@ -1172,14 +1172,30 @@ export const DashboardPage: React.FC = () => {
                             ₹{invoice.balanceAmount.toLocaleString()}
                           </span>
                         </td>
-                        <td><InvoiceStatusBadge status={invoice.status} /></td>
+                        <td>
+                          {invoice.status === 'Partially Paid' ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddPaymentClick(invoice);
+                              }}
+                              title="View payment history and edit"
+                              className="appearance-none bg-transparent border-0 p-0 cursor-pointer rounded-full hover:ring-2 hover:ring-amber-200 transition-shadow focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-1"
+                            >
+                              <InvoiceStatusBadge status={invoice.status} />
+                            </button>
+                          ) : (
+                            <InvoiceStatusBadge status={invoice.status} />
+                          )}
+                        </td>
                         <td className="text-right">
                           <div className="flex items-center gap-1 justify-end">
-                            {invoice.balanceAmount > 0 && (
+                            {(invoice.balanceAmount > 0 || invoice.status === 'Partially Paid' || invoice.paidAmount > 0) && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleAddPaymentClick(invoice); }}
                                 className="p-1.5 rounded-md text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                                title="Add Payment"
+                                title={invoice.balanceAmount > 0 ? 'Add Payment' : 'Payment History'}
                               >
                                 <DollarSign className="h-4 w-4" />
                               </button>
@@ -1373,7 +1389,10 @@ export const DashboardPage: React.FC = () => {
             setSelectedInvoiceForPayment(null);
           }}
           onConfirm={handleConfirmPayment}
+          onPaymentsChanged={loadDashboardStats}
+          invoiceId={selectedInvoiceForPayment.id}
           invoiceNumber={selectedInvoiceForPayment.invoiceNumber}
+          grandTotal={selectedInvoiceForPayment.grandTotal}
           balanceAmount={selectedInvoiceForPayment.balanceAmount}
         />
       )}
