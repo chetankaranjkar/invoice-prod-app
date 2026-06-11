@@ -37,7 +37,7 @@ namespace InvoiceApp.Api.Controllers
             {
                 var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(currentUserId.Value);
                 if (!createdUserIds.Contains(userId.Value) && userId.Value != currentUserId.Value)
-                    return Forbid("You can only view customers of users you created or yourself.");
+                    return Forbidden("You can only view customers of users you created or yourself.");
                 customers = await _customerService.GetCustomersByUserIdAsync(userId.Value);
             }
             else if (userRole == "Admin")
@@ -77,7 +77,7 @@ namespace InvoiceApp.Api.Controllers
             // MasterUser cannot create customers - they can only manage admins
             if (userRole == "MasterUser")
             {
-                return Forbid("MasterUser cannot create customers. Only Admin and User roles can create customers.");
+                return Forbidden("MasterUser cannot create customers. Only Admin and User roles can create customers.");
             }
 
             // Only Admin can share with users; validate SharedWithUserIds are users they created
@@ -108,7 +108,7 @@ namespace InvoiceApp.Api.Controllers
             var userId = _userContext.GetCurrentUserId();
             var userRole = _userContext.GetCurrentUserRole();
             if (userId == null || userRole != "Admin")
-                return Forbid("Only Admin can share customers with other users.");
+                return Forbidden("Only Admin can share customers with other users.");
 
             var createdUserIds = await _userManagementService.GetUserIdsCreatedByAdminAsync(userId.Value);
             var invalid = (dto?.UserIds ?? new List<Guid>()).Where(uid => !createdUserIds.Contains(uid) && uid != userId.Value).ToList();
@@ -126,7 +126,7 @@ namespace InvoiceApp.Api.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return Forbidden(ex.Message);
             }
         }
 

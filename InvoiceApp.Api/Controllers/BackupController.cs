@@ -219,6 +219,32 @@ namespace InvoiceApp.Api.Controllers
             }
         }
 
+        [HttpGet("download/{fileName}")]
+        public async Task<IActionResult> DownloadBackup(string fileName)
+        {
+            try
+            {
+                var currentUserId = _userContext.GetCurrentUserId();
+                if (currentUserId == null)
+                    return Unauthorized("User not authenticated");
+
+                var backupResult = await _backupService.GetBackupFileAsync(fileName);
+                if (backupResult == null || !backupResult.Success || string.IsNullOrEmpty(backupResult.FilePath))
+                    return NotFound(new { error = "Backup file not found" });
+
+                if (!System.IO.File.Exists(backupResult.FilePath))
+                    return NotFound(new { error = "Backup file not found" });
+
+                var fileStream = new FileStream(backupResult.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                return File(fileStream, "application/zip", backupResult.FileName ?? "backup.zip");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading backup: {FileName}", fileName);
+                return StatusCode(500, new { error = "An error occurred while downloading backup" });
+            }
+        }
+
         [HttpGet("list")]
         public async Task<IActionResult> ListBackups()
         {

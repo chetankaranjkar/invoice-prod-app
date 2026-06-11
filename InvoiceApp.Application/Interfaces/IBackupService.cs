@@ -8,6 +8,7 @@ namespace InvoiceApp.Application.Interfaces
         Task<BackupResult> CreateBackupAsync();
         Task<RestoreResult> RestoreBackupAsync(string backupFilePath);
         Task<List<BackupInfo>> ListBackupsAsync();
+        Task<BackupResult?> GetBackupFileAsync(string fileName);
     }
 
     public class BackupResult

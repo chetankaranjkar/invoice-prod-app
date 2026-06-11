@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { Users, IndianRupee, Phone, Mail, UserPlus, X, Edit, Eye, Upload, Download, Printer, Search, LayoutGrid, LayoutList } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/agent';
 import type { Customer, Invoice, CreateCustomerDto, InvoiceLayoutConfigDto } from '../types';
 import { formatCurrency, sellerInfoToCompanyInfo, getApiErrorMessage } from '../utils/helpers';
@@ -37,7 +38,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [showEditCustomer, setShowEditCustomer] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [userRole, setUserRole] = useState<string>('User');
+  const { profile, loading: profileLoading } = useAuth();
+  const userRole = profile?.role ?? '';
 
   // 🆕 New: Track selected customer for invoice/payment modal
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -67,18 +69,8 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
 
   useEffect(() => {
     loadData();
-    loadUserRole();
     loadInvoiceLayouts();
   }, []);
-
-  const loadUserRole = async () => {
-    try {
-      const response = await api.user.getProfile();
-      setUserRole(response.data.role || 'User');
-    } catch (error) {
-      console.error('Failed to load user role:', error);
-    }
-  };
 
   const loadData = async () => {
     try {
@@ -609,9 +601,12 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
         try {
           await api.customers.create(customerDto);
           successCount++;
-        } catch (err: any) {
+        } catch (err: unknown) {
           failCount++;
-          const errorMsg = err.response?.data?.message || 'Unknown error';
+          const errorMsg = getApiErrorMessage(
+            err as Parameters<typeof getApiErrorMessage>[0],
+            'Unknown error',
+          );
           failMessages.push(`${customerDto.customerName}: ${errorMsg}`);
         }
       }
@@ -767,7 +762,12 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
                   ) : null}
                 </div>
               </div>
-              {userRole !== 'MasterUser' && (
+              {!profileLoading && userRole === 'MasterUser' && (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Log in as an <strong>Admin</strong> account to add or import customers. MasterUser can manage admins only.
+                </p>
+              )}
+              {!profileLoading && userRole !== 'MasterUser' && userRole !== '' && (
                 <div className="flex items-center gap-2 flex-wrap shrink-0">
                   <button
                     onClick={handleDownloadTemplate}

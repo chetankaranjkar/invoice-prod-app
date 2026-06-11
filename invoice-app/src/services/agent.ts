@@ -321,11 +321,15 @@ export const api = {
   // Backup APIs (Admin/MasterUser only)
   backup: {
     create: () => agent.post('Backup/create', {}, { responseType: 'blob', timeout: 300000 }),
+    download: (fileName: string) =>
+      agent.get(`Backup/download/${encodeURIComponent(fileName)}`, {
+        responseType: 'blob',
+        timeout: 300000,
+      }),
     restore: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
       return agent.post('Backup/restore', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 300000,
       });
     },

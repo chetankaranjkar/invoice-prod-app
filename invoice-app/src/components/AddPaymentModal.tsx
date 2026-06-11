@@ -179,7 +179,7 @@ export const AddPaymentModal: React.FC<AddPaymentModalProps> = ({
       await loadPaymentHistory();
       if (onPaymentsChanged) await onPaymentsChanged();
     } catch (error) {
-      alert(`Failed to update payment: ${getApiErrorMessage(error, 'Please try again.')}`);
+      alert(`Failed to update payment: ${getApiErrorMessage(error as Parameters<typeof getApiErrorMessage>[0], 'Please try again.')}`);
     } finally {
       setEditLoading(false);
     }
