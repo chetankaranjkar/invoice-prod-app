@@ -166,8 +166,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Detect sqlcmd path (SQL Server 2022 uses mssql-tools18 or PATH sqlcmd)
+set SQLCMD=
+docker exec invoiceapp-db sqlcmd -S localhost -U sa -P YourStrong@Password123 -C -Q "SELECT 1" >nul 2>&1
+if not errorlevel 1 set SQLCMD=sqlcmd
+if "%SQLCMD%"=="" (
+    docker exec invoiceapp-db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P YourStrong@Password123 -C -Q "SELECT 1" >nul 2>&1
+    if not errorlevel 1 set SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+)
+if "%SQLCMD%"=="" (
+    docker exec invoiceapp-db /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Password123 -Q "SELECT 1" >nul 2>&1
+    if not errorlevel 1 set SQLCMD=/opt/mssql-tools/bin/sqlcmd
+)
+if "%SQLCMD%"=="" (
+    echo [ERROR] sqlcmd not found in invoiceapp-db container
+    pause
+    exit /b 1
+)
+
+set SQLCMD_TRUST=
+if "%SQLCMD%"=="sqlcmd" set SQLCMD_TRUST=-C
+if "%SQLCMD%"=="/opt/mssql-tools18/bin/sqlcmd" set SQLCMD_TRUST=-C
+
 echo Restoring database from backup...
-docker exec invoiceapp-db /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Password123 -Q "RESTORE DATABASE InvoiceApp FROM DISK = '/var/opt/mssql/backup/InvoiceApp.bak' WITH REPLACE, STATS = 10"
+docker exec invoiceapp-db %SQLCMD% -S localhost -U sa -P YourStrong@Password123 %SQLCMD_TRUST% -Q "RESTORE DATABASE InvoiceApp FROM DISK = '/var/opt/mssql/backup/InvoiceApp.bak' WITH REPLACE, STATS = 10"
 
 if errorlevel 1 (
     echo [ERROR] Failed to restore database
