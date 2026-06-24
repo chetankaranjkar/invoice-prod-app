@@ -127,6 +127,9 @@ namespace InvoiceApp.Infrastructure.Services
             if (updateDto.IncludeSignatureOnInvoice.HasValue)
                 user.IncludeSignatureOnInvoice = updateDto.IncludeSignatureOnInvoice.Value;
 
+            if (updateDto.IncludeLogoOnInvoice.HasValue)
+                user.IncludeLogoOnInvoice = updateDto.IncludeLogoOnInvoice.Value;
+
             user.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

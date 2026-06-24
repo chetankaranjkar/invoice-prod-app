@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CompanyInfo, Customer, InvoiceItem } from '../../../types';
 import { useDateFormat } from '../../../hooks/useDateFormat';
+import { resolveAssetUrl, shouldShowInvoiceLogo } from '../../../utils/helpers';
 
 interface HeaderSectionProps {
   company: CompanyInfo | null;
@@ -30,11 +31,12 @@ export const HeaderSection: React.FC<HeaderSectionProps> = ({ company, invoiceNu
           <p className="text-xs text-gray-700"><strong>Invoice No:</strong> {invoiceNumber}</p>
           <p className="text-xs text-gray-700"><strong>Invoice Date:</strong> {formatDate(invoiceDate)}</p>
         </div>
-        {company?.logoUrl ? (
+        {shouldShowInvoiceLogo(company) ? (
           <img
-            src={company.logoUrl}
-            alt={company.businessName || company.name || 'Company Logo'}
-            className="h-12 w-auto object-contain"
+            src={resolveAssetUrl(company!.logoUrl)}
+            alt={company?.businessName || company?.name || 'Company Logo'}
+            className="h-10 w-auto max-w-[96px] object-contain"
+            crossOrigin="anonymous"
           />
         ) : (
           <div className="text-xs font-semibold text-gray-700">

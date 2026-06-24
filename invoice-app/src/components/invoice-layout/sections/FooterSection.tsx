@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CompanyInfo, Customer, InvoiceItem } from '../../../types';
+import { InvoiceSignatureImage } from '../../invoice/InvoiceSignatureImage';
 
 interface FooterSectionProps {
   company: CompanyInfo | null;
@@ -33,6 +34,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ company }) => {
         </div>
       </div>
       <div className="pt-3">
+        <InvoiceSignatureImage company={company} className="max-h-10 max-w-[140px] object-contain mb-1" />
         <p className="font-semibold">Signature</p>
       </div>
     </div>

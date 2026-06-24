@@ -4,6 +4,7 @@ import type { CompanyInfo, Customer, InvoiceItem, Payment } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDateFormat } from '../../hooks/useDateFormat';
 import { resolveAssetUrl } from '../../utils/helpers';
+import { InvoiceSignatureImage } from '../invoice/InvoiceSignatureImage';
 import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../../utils/invoiceCalculations';
 import StaticInvoiceHeader from './sections/header/StaticInvoiceHeader';
 import StaticInvoiceItems from './sections/invoiceitems/invoicedata';
@@ -63,9 +64,10 @@ function TaxInvoice({
       State: profile.state ?? profile.State,
       Zip: profile.zip ?? profile.Zip,
       phone: profile.phone,
-      logoUrl: profile.logoUrl,
+      logoUrl: profile.logoUrl ? resolveAssetUrl(profile.logoUrl) : undefined,
       signatureUrl: profile.signatureUrl,
       includeSignatureOnInvoice: profile.includeSignatureOnInvoice,
+      includeLogoOnInvoice: profile.includeLogoOnInvoice,
       headerLogoBgColor: profile.headerLogoBgColor,
       addressSectionBgColor: profile.addressSectionBgColor,
       headerLogoTextColor: profile.headerLogoTextColor,
@@ -151,14 +153,10 @@ function TaxInvoice({
           </div>
           <div className="text-right">
             <div className="h-12 w-48 flex items-end justify-end border-b border-[#1f2937] mb-1 overflow-hidden">
-              {companyInfo?.signatureUrl && companyInfo?.includeSignatureOnInvoice !== false && (
-                <img
-                  src={resolveAssetUrl(companyInfo.signatureUrl)}
-                  alt="Authorised Signature"
-                  className="max-h-12 max-w-full object-contain"
-                  crossOrigin="anonymous"
-                />
-              )}
+              <InvoiceSignatureImage
+                company={companyInfo}
+                className="max-h-10 max-w-full object-contain"
+              />
             </div>
             <p className="text-xs font-semibold text-[#1f2937]">Authorised Signatory</p>
             <p className="text-[10px] text-[#4b5563] uppercase tracking-wide">

@@ -77,6 +77,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         defaultGstPercentage: response.data.defaultGstPercentage ?? 18,
         disableQuantity: response.data.disableQuantity || false,
         includeSignatureOnInvoice: response.data.includeSignatureOnInvoice ?? true,
+        includeLogoOnInvoice: response.data.includeLogoOnInvoice ?? true,
       });
       let logoUrl = response.data.logoUrl || '';
       if (logoUrl && logoUrl.trim() !== '') {
@@ -186,6 +187,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         defaultGstPercentage: formData.defaultGstPercentage ?? 18,
         disableQuantity: formData.disableQuantity || false,
         includeSignatureOnInvoice: formData.includeSignatureOnInvoice ?? true,
+        includeLogoOnInvoice: formData.includeLogoOnInvoice ?? true,
         invoiceHeaderFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.invoiceHeaderFontSize ?? 12),
         addressSectionFontSize: formData.useDefaultInvoiceFontSizes ? undefined : (formData.addressSectionFontSize ?? 14),
         useDefaultInvoiceFontSizes: formData.useDefaultInvoiceFontSizes ?? true,
@@ -287,7 +289,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gray-600 mb-3">PNG, JPG. Max 2MB. Appears on all invoices.</p>
+                      <p className="text-xs text-gray-600 mb-3">PNG, JPG. Max 2MB. Shown small on invoices when enabled below.</p>
+                      <label className="flex items-center gap-2 mb-3 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.includeLogoOnInvoice ?? true}
+                          onChange={(e) => setFormData(prev => ({ ...prev, includeLogoOnInvoice: e.target.checked }))}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        Include logo on invoices
+                      </label>
                       <label>
                         <input type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
                         <span className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm ${themeColors.info} text-white rounded-md cursor-pointer hover:opacity-90`}>
@@ -443,6 +454,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             {/* Invoice Settings Tab */}
             {activeTab === 'invoice' && (
               <div className="space-y-6 max-w-md">
+                <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-800">Logo &amp; signature on invoices</h3>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.includeLogoOnInvoice ?? true}
+                      onChange={(e) => setFormData(prev => ({ ...prev, includeLogoOnInvoice: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Show company logo (small, in header)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.includeSignatureOnInvoice ?? true}
+                      onChange={(e) => setFormData(prev => ({ ...prev, includeSignatureOnInvoice: e.target.checked }))}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Show authorised signature</span>
+                  </label>
+                  <p className="text-xs text-gray-500">Applies to Classic, Static Invoice (Classic), Static Invoice (Modern), and custom layouts.</p>
+                </div>
                 <div>
                   <label className={labelClass}>Invoice Prefix *</label>
                   <input type="text" name="invoicePrefix" value={formData.invoicePrefix || 'INV'} onChange={handleInputChange} className={inputClass} placeholder="INV" required maxLength={20} />

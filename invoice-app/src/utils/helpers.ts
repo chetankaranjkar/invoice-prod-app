@@ -43,6 +43,14 @@ const getBool = (s: SellerInfoRaw, camel: string, pascal: string): boolean => {
   return val === true || val === 'true' || val === 1;
 };
 
+/** Whether to show the uploaded company logo on invoice templates. */
+export const shouldShowInvoiceLogo = (company: CompanyInfo | null | undefined): boolean =>
+  company?.includeLogoOnInvoice !== false && !!company?.logoUrl?.trim();
+
+/** Whether to show the uploaded signature on invoice templates. */
+export const shouldShowInvoiceSignature = (company: CompanyInfo | null | undefined): boolean =>
+  company?.includeSignatureOnInvoice !== false && !!company?.signatureUrl?.trim();
+
 /** Convert invoice seller info (from API) to CompanyInfo for display. Handles both camelCase and PascalCase. */
 export const sellerInfoToCompanyInfo = (s: SellerInfoRaw): CompanyInfo => ({
   name: get(s, 'name', 'Name') ?? '',
@@ -64,6 +72,11 @@ export const sellerInfoToCompanyInfo = (s: SellerInfoRaw): CompanyInfo => ({
   signatureUrl: get(s, 'signatureUrl', 'SignatureUrl'),
   includeSignatureOnInvoice: ((): boolean | undefined => {
     const v = (s as Record<string, unknown>)['includeSignatureOnInvoice'] ?? (s as Record<string, unknown>)['IncludeSignatureOnInvoice'];
+    if (v == null) return undefined;
+    return v === true || v === 'true' || v === 1;
+  })(),
+  includeLogoOnInvoice: ((): boolean | undefined => {
+    const v = (s as Record<string, unknown>)['includeLogoOnInvoice'] ?? (s as Record<string, unknown>)['IncludeLogoOnInvoice'];
     if (v == null) return undefined;
     return v === true || v === 'true' || v === 1;
   })(),

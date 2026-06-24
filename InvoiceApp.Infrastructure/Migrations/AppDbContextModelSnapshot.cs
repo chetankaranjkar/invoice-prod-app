@@ -843,6 +843,11 @@ namespace InvoiceApp.Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
+                    b.Property<bool>("IncludeLogoOnInvoice")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<int?>("InvoiceHeaderFontSize")
                         .HasColumnType("int");
 

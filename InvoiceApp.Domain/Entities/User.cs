@@ -23,6 +23,7 @@ namespace InvoiceApp.Domain.Entities
         public string? LogoUrl { get; set; }  // Add this line
         public string? SignatureUrl { get; set; } // Authorised signatory image
         public bool IncludeSignatureOnInvoice { get; set; } = true; // When true, render SignatureUrl on invoice
+        public bool IncludeLogoOnInvoice { get; set; } = true; // When true, render LogoUrl on invoice
         public string? HeaderLogoBgColor { get; set; }
         public string? AddressSectionBgColor { get; set; }
         public string? HeaderLogoTextColor { get; set; }

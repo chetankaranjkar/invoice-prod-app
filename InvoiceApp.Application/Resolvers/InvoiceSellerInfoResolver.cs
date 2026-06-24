@@ -51,6 +51,7 @@ namespace InvoiceApp.Application.Resolvers
                 LogoUrl = source.User.LogoUrl,
                 SignatureUrl = source.User.SignatureUrl,
                 IncludeSignatureOnInvoice = source.User.IncludeSignatureOnInvoice,
+                IncludeLogoOnInvoice = source.User.IncludeLogoOnInvoice,
                 HeaderLogoBgColor = source.User.HeaderLogoBgColor,
                 AddressSectionBgColor = source.User.AddressSectionBgColor,
                 HeaderLogoTextColor = source.User.HeaderLogoTextColor,

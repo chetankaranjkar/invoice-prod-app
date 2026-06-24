@@ -1,5 +1,6 @@
 import type { CompanyInfo } from '../../../../types';
 import { getEffectiveHeaderFontSize } from '../../../../utils/helpers';
+import { InvoiceSmallLogo } from '../../../invoice/InvoiceSmallLogo';
 
 interface SInvoiceHeaderLogoProps {
   company: CompanyInfo | null;
@@ -18,6 +19,9 @@ function SInvoiceHeaderLogo({ company }: SInvoiceHeaderLogoProps) {
         fontSize: `${fontSize}px`,
       }}
     >
+      <div className="flex items-start gap-3">
+        <InvoiceSmallLogo company={company} />
+        <div className="min-w-0 flex-1">
       <h1
         className="font-extrabold text-current uppercase tracking-tight leading-tight"
         style={{ fontSize: `${titleSize}px` }}
@@ -51,6 +55,8 @@ function SInvoiceHeaderLogo({ company }: SInvoiceHeaderLogoProps) {
             <span className="font-semibold">GSTIN:</span> {company.gstNumber}
           </p>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

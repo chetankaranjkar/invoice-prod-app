@@ -4,6 +4,8 @@ import type { CompanyInfo, Customer, InvoiceItem, Payment } from '../../types';
 import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../../utils/invoiceCalculations';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDateFormat } from '../../hooks/useDateFormat';
+import { resolveAssetUrl } from '../../utils/helpers';
+import { InvoiceSignatureImage } from '../invoice/InvoiceSignatureImage';
 import StaticInvoiceHeader from './sections/header/StaticInvoiceHeader';
 import StaticInvoiceItems from './sections/invoiceitems/invoicedata';
 import BankandCost from './sections/BankandCost/BankandCost';
@@ -62,7 +64,10 @@ function TaxInvoice({
       State: profile.state ?? profile.State,
       Zip: profile.zip ?? profile.Zip,
       phone: profile.phone,
-      logoUrl: profile.logoUrl,
+      logoUrl: profile.logoUrl ? resolveAssetUrl(profile.logoUrl) : undefined,
+      signatureUrl: profile.signatureUrl,
+      includeSignatureOnInvoice: profile.includeSignatureOnInvoice,
+      includeLogoOnInvoice: profile.includeLogoOnInvoice,
       headerLogoBgColor: profile.headerLogoBgColor,
       addressSectionBgColor: profile.addressSectionBgColor,
       headerLogoTextColor: profile.headerLogoTextColor,
@@ -138,9 +143,15 @@ function TaxInvoice({
       <div className="mt-4">
         <hr className="border-[#99a1af] mb-2" />
         <p className="text-[10px] text-center text-gray-600 mb-2">E.&amp; O.E</p>
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-end justify-between text-sm gap-4">
           <div className="w-1/3 text-left font-bold">Thanking for your business</div>
-          <div className="w-1/3 text-right font-bold uppercase">{companyInfo?.businessName || companyInfo?.name || ''}</div>
+          <div className="w-1/3 text-right">
+            <div className="flex flex-col items-end">
+              <InvoiceSignatureImage company={companyInfo} className="max-h-10 max-w-[140px] object-contain mb-1" />
+              <p className="text-[10px] font-semibold">Authorised Signatory</p>
+              <p className="font-bold uppercase">{companyInfo?.businessName || companyInfo?.name || ''}</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

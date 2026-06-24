@@ -58,6 +58,10 @@ function userProfileToCompanyInfo(p: Record<string, unknown>): CompanyInfo {
       const v = p['includeSignatureOnInvoice'] ?? p['IncludeSignatureOnInvoice'];
       return v == null ? undefined : (v === true || v === 'true' || v === 1);
     })(),
+    includeLogoOnInvoice: ((): boolean | undefined => {
+      const v = p['includeLogoOnInvoice'] ?? p['IncludeLogoOnInvoice'];
+      return v == null ? undefined : (v === true || v === 'true' || v === 1);
+    })(),
     headerLogoBgColor: getProp(p, 'headerLogoBgColor', 'HeaderLogoBgColor') as string | undefined,
     addressSectionBgColor: getProp(p, 'addressSectionBgColor', 'AddressSectionBgColor') as string | undefined,
     headerLogoTextColor: getProp(p, 'headerLogoTextColor', 'HeaderLogoTextColor') as string | undefined,

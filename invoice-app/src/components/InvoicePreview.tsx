@@ -12,7 +12,9 @@ import jsPDF from 'jspdf';
 import { Printer, Download } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDateFormat } from '../hooks/useDateFormat';
-import { resolveAssetUrl } from '../utils/helpers';
+import { shouldShowInvoiceLogo } from '../utils/helpers';
+import { InvoiceSmallLogo } from './invoice/InvoiceSmallLogo';
+import { InvoiceSignatureImage } from './invoice/InvoiceSignatureImage';
 import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../utils/invoiceCalculations';
 import { InvoiceHierarchyRows } from './invoice/InvoiceHierarchyRows';
 
@@ -154,6 +156,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
         signatureUrl: userProfile.signatureUrl || (userProfile as any).SignatureUrl || undefined,
         includeSignatureOnInvoice: ((): boolean | undefined => {
           const v = userProfile.includeSignatureOnInvoice ?? (userProfile as any).IncludeSignatureOnInvoice;
+          return v == null ? undefined : (v === true || v === 'true' || v === 1);
+        })(),
+        includeLogoOnInvoice: ((): boolean | undefined => {
+          const v = userProfile.includeLogoOnInvoice ?? (userProfile as any).IncludeLogoOnInvoice;
           return v == null ? undefined : (v === true || v === 'true' || v === 1);
         })(),
       };
@@ -610,78 +616,16 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
             <p className="text-xs sm:text-sm"><strong>Invoice No:  </strong> {invoiceNumber}</p>
             <p className="mb-2 text-xs sm:text-sm"><strong>Invoice Date:</strong> {formatDate(invoiceDate)}</p>
           </div>
-          <div className="invoice-logo w-full sm:w-[50%] flex items-center justify-center border-b-[#505050] border-b-2 overflow-hidden bg-gray-600 min-h-[15vh]">
-            {currentCompany.logoUrl && currentCompany.logoUrl.trim() !== '' ? (
-              <>
-                <img
-                  key={currentCompany.logoUrl} // Force re-render if URL changes
-                  className="h-full w-full max-h-[15vh] object-contain"
-                  src={currentCompany.logoUrl}
-                  alt={currentCompany.name || currentCompany.businessName || 'Company Logo'}
-                  loading="eager"
-                  onError={(e) => {
-                    const img = e.target as HTMLImageElement;
-                    if (process.env.NODE_ENV === 'development') {
-                      console.error('Logo image failed to load:', currentCompany.logoUrl);
-                      console.error('Image src attribute:', img.src);
-                      console.error('Image natural dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-                      // Try to fetch the image to see the actual error
-                      if (currentCompany.logoUrl) {
-                        fetch(currentCompany.logoUrl, { method: 'HEAD' })
-                          .then(response => {
-                            console.log('Fetch HEAD response:', {
-                              status: response.status,
-                              statusText: response.statusText,
-                              headers: Object.fromEntries(response.headers.entries())
-                            });
-                          })
-                          .catch(err => console.error('Fetch error:', err));
-                      }
-                    }
-
-                    // Try to reload the image once
-                    if (!img.dataset.retried) {
-                      img.dataset.retried = 'true';
-                      const originalSrc = img.src;
-                      img.src = '';
-                      // Force a fresh load
-                      setTimeout(() => {
-                        img.src = originalSrc + '?t=' + Date.now();
-                      }, 200);
-                      return;
-                    }
-
-                    // Hide the broken image after retry failed
-                    img.style.display = 'none';
-                    // Show business name in white on gray background
-                    if (!img.parentElement?.querySelector('.logo-placeholder')) {
-                      const placeholder = document.createElement('div');
-                      placeholder.className = 'logo-placeholder flex items-center justify-center h-full w-full';
-                      const companyName = currentCompany.businessName || currentCompany.name || 'Company Name';
-                      placeholder.innerHTML = `<strong class="text-sm font-bold text-white">${companyName}</strong>`;
-                      img.parentElement?.appendChild(placeholder);
-                    }
-                  }}
-                  onLoad={(e) => {
-                    const img = e.target as HTMLImageElement;
-                    // Remove any placeholder when image loads successfully
-                    const placeholder = img.parentElement?.querySelector('.logo-placeholder');
-                    if (placeholder) {
-                      placeholder.remove();
-                    }
-                    // Ensure image is visible
-                    img.style.display = '';
-                    if (process.env.NODE_ENV === 'development') {
-                      console.log('✅ Logo image loaded successfully:', currentCompany.logoUrl);
-                      console.log('Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-                    }
-                  }}
-                />
-              </>
+          <div className="invoice-logo w-full sm:w-[50%] flex items-center justify-end border-b-[#505050] border-b-2 py-2 px-2 min-h-0">
+            {shouldShowInvoiceLogo(currentCompany) ? (
+              <InvoiceSmallLogo
+                company={currentCompany}
+                className="h-12 w-auto max-w-[120px] object-contain"
+              />
             ) : (
-              <div className="flex items-center justify-center h-full w-full">
-                <strong className="text-sm font-bold text-white">
-                  {currentCompany.businessName || currentCompany.name || 'Company Name'}
+              <div className="flex items-center justify-end h-full w-full">
+                <strong className="text-sm font-bold text-gray-800 text-right">
+                  {currentCompany?.businessName || currentCompany?.name || 'Company Name'}
                 </strong>
               </div>
             )}
@@ -783,14 +727,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
               </span>
               }
               <div className="Signature invoice-signature mt-2 mb-[6vw]">
-                {currentCompany.signatureUrl && currentCompany.includeSignatureOnInvoice !== false && (
-                  <img
-                    src={resolveAssetUrl(currentCompany.signatureUrl)}
-                    alt="Authorised Signature"
-                    className="max-h-12 max-w-[180px] object-contain mb-1"
-                    crossOrigin="anonymous"
-                  />
-                )}
+                <InvoiceSignatureImage company={currentCompany} className="max-h-10 max-w-[140px] object-contain mb-1" />
                 <p className="text-xs"><strong>Signature</strong></p>
               </div>
 
