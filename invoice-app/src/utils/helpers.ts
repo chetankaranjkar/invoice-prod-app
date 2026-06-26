@@ -57,6 +57,29 @@ export const isWorkIncomplete = (
   invoice: { workStatus?: string; WorkStatus?: string } | null | undefined,
 ): boolean => normalizeWorkStatus(invoice) !== 'Completed';
 
+export const WORK_REMINDER_DAYS = 5;
+
+/** Whole calendar days between a date string (YYYY-MM-DD) and today. */
+export const getDaysSinceDate = (dateStr: string, from: Date = new Date()): number => {
+  const iso = dateStr.split('T')[0];
+  const start = parseLocalDate(iso);
+  const today = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  return Math.floor((today.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+/** Invoice work is incomplete and has been open longer than WORK_REMINDER_DAYS. */
+export const isWorkReminderDue = (
+  invoice: { workStatus?: string; WorkStatus?: string; invoiceDate: string } | null | undefined,
+): boolean => !!invoice && isWorkIncomplete(invoice) && getDaysSinceDate(invoice.invoiceDate) > WORK_REMINDER_DAYS;
+
+export const formatDaysAgo = (days: number | null | undefined): string => {
+  if (days == null) return 'never';
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+};
+
 /** Whether to show the uploaded company logo on invoice templates. */
 export const shouldShowInvoiceLogo = (company: CompanyInfo | null | undefined): boolean =>
   company?.includeLogoOnInvoice !== false && !!company?.logoUrl?.trim();

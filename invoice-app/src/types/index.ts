@@ -3,6 +3,17 @@ export type WorkStatus = 'Pending' | 'In Progress' | 'Completed';
 
 export const WORK_STATUS_OPTIONS: WorkStatus[] = ['Pending', 'In Progress', 'Completed'];
 
+export interface BackupStatus {
+  hasBackup: boolean;
+  lastBackupAt: string | null;
+  lastBackupFileName: string | null;
+  lastBackupSize: number;
+  totalBackups: number;
+  daysSinceBackup: number | null;
+  staleAfterDays: number;
+  isStale: boolean;
+}
+
 export interface CreateInvoiceDto {
   customerId: number;
   dueDate?: string;

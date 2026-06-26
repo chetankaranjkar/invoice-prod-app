@@ -263,5 +263,24 @@ namespace InvoiceApp.Api.Controllers
                 return StatusCode(500, new { error = "An error occurred while listing backups" });
             }
         }
+
+        [HttpGet("status")]
+        public async Task<IActionResult> GetBackupStatus()
+        {
+            try
+            {
+                var currentUserId = _userContext.GetCurrentUserId();
+                if (currentUserId == null)
+                    return Unauthorized("User not authenticated");
+
+                var status = await _backupService.GetBackupStatusAsync();
+                return Ok(status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting backup status");
+                return StatusCode(500, new { error = "An error occurred while getting backup status" });
+            }
+        }
     }
 }

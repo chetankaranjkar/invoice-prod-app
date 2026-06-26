@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { BackupStatus } from '../types';
 
 // Use environment variable for API URL, fallback to proxy or direct connection
 // In development, use Vite proxy (/api/) which forwards to http://localhost:5001
@@ -336,6 +337,7 @@ export const api = {
       });
     },
     list: () => agent.get<any[]>('Backup/list'),
+    status: () => agent.get<BackupStatus>('Backup/status'),
   },
 
   // Error Log APIs (Admin/MasterUser only)

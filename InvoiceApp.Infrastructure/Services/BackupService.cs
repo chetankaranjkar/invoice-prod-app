@@ -419,6 +419,38 @@ namespace InvoiceApp.Infrastructure.Services
             }
         }
 
+        public async Task<BackupStatus> GetBackupStatusAsync()
+        {
+            const int staleAfterDays = 7;
+            var backups = await ListBackupsAsync();
+            var latest = backups.FirstOrDefault();
+
+            if (latest == null || string.IsNullOrEmpty(latest.FileName))
+            {
+                return new BackupStatus
+                {
+                    HasBackup = false,
+                    TotalBackups = 0,
+                    StaleAfterDays = staleAfterDays,
+                    IsStale = true,
+                };
+            }
+
+            var daysSinceBackup = Math.Max(0, (int)Math.Floor((DateTime.Now - latest.CreatedDate).TotalDays));
+
+            return new BackupStatus
+            {
+                HasBackup = true,
+                LastBackupAt = latest.CreatedDate,
+                LastBackupFileName = latest.FileName,
+                LastBackupSize = latest.FileSize,
+                TotalBackups = backups.Count,
+                DaysSinceBackup = daysSinceBackup,
+                StaleAfterDays = staleAfterDays,
+                IsStale = daysSinceBackup >= staleAfterDays,
+            };
+        }
+
         private const string BackupFileName = "InvoiceApp.bak";
 
         private async Task<(bool Success, string? ErrorMessage)> BackupDatabaseAsync(string backupDir)

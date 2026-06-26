@@ -5,13 +5,13 @@ import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvo
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
-import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, WorkStatus, InvoiceLayoutConfigDto } from '../types';
+import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, WorkStatus, InvoiceLayoutConfigDto, BackupStatus } from '../types';
 import { WORK_STATUS_OPTIONS } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, FileText as FileTextIcon, AlertCircle } from 'lucide-react';
+import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, FileText as FileTextIcon, AlertCircle, Clock, Database } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { InvoiceStatusBadge, WorkStatusBadge } from '../components/ui/Badge';
-import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage, normalizeWorkStatus, isWorkIncomplete } from '../utils/helpers';
+import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage, normalizeWorkStatus, isWorkIncomplete, isWorkReminderDue, getDaysSinceDate, formatDaysAgo, WORK_REMINDER_DAYS } from '../utils/helpers';
 import { useDateFormat } from '../hooks/useDateFormat';
 import { AddPaymentModal } from '../components/AddPaymentModal';
 import { UpdateInvoiceDateModal, UpdateInvoiceDateButton } from '../components/UpdateInvoiceDateModal';
@@ -49,6 +49,8 @@ export const DashboardPage: React.FC = () => {
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
   const [showPendingByUserModal, setShowPendingByUserModal] = useState(false);
   const [showIncompleteWorkModal, setShowIncompleteWorkModal] = useState(false);
+  const [incompleteWorkModalFilter, setIncompleteWorkModalFilter] = useState<'all' | 'overdue'>('all');
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [invoiceForDateUpdate, setInvoiceForDateUpdate] = useState<Invoice | null>(null);
@@ -81,6 +83,12 @@ export const DashboardPage: React.FC = () => {
     loadBusinessName();
     loadInvoiceLayouts();
   }, []);
+
+  useEffect(() => {
+    if (userRole === 'Admin' || userRole === 'MasterUser') {
+      loadBackupStatus();
+    }
+  }, [userRole]);
 
   // Update selected year when invoices are loaded
   useEffect(() => {
@@ -131,6 +139,32 @@ export const DashboardPage: React.FC = () => {
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to load invoice layouts:', error);
+      }
+    }
+  };
+
+  const normalizeBackupStatus = (raw: Record<string, unknown>): BackupStatus => ({
+    hasBackup: Boolean(raw.hasBackup ?? raw.HasBackup),
+    lastBackupAt: (raw.lastBackupAt ?? raw.LastBackupAt ?? null) as string | null,
+    lastBackupFileName: (raw.lastBackupFileName ?? raw.LastBackupFileName ?? null) as string | null,
+    lastBackupSize: Number(raw.lastBackupSize ?? raw.LastBackupSize ?? 0),
+    totalBackups: Number(raw.totalBackups ?? raw.TotalBackups ?? 0),
+    daysSinceBackup: raw.daysSinceBackup != null || raw.DaysSinceBackup != null
+      ? Number(raw.daysSinceBackup ?? raw.DaysSinceBackup)
+      : null,
+    staleAfterDays: Number(raw.staleAfterDays ?? raw.StaleAfterDays ?? 7),
+    isStale: Boolean(raw.isStale ?? raw.IsStale),
+  });
+
+  const loadBackupStatus = async () => {
+    try {
+      const response = await api.backup.status();
+      const raw = response.data;
+      const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+      setBackupStatus(normalizeBackupStatus(data));
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load backup status:', error);
       }
     }
   };
@@ -285,6 +319,11 @@ export const DashboardPage: React.FC = () => {
     }, 100);
   };
 
+  const openIncompleteWorkModal = (filter: 'all' | 'overdue' = 'all') => {
+    setIncompleteWorkModalFilter(filter);
+    setShowIncompleteWorkModal(true);
+  };
+
   const handleViewPendingByUser = () => {
     setShowPendingByUserModal(true);
   };
@@ -396,6 +435,18 @@ export const DashboardPage: React.FC = () => {
         .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
     [allInvoices],
   );
+
+  const overdueWorkInvoices = React.useMemo(
+    () =>
+      incompleteWorkInvoices
+        .filter((inv) => isWorkReminderDue(inv))
+        .sort((a, b) => getDaysSinceDate(b.invoiceDate) - getDaysSinceDate(a.invoiceDate)),
+    [incompleteWorkInvoices],
+  );
+
+  const overdueWorkCount = overdueWorkInvoices.length;
+
+  const modalWorkInvoices = incompleteWorkModalFilter === 'overdue' ? overdueWorkInvoices : incompleteWorkInvoices;
 
   const filteredInvoices = getFilteredInvoices();
 
@@ -999,27 +1050,85 @@ export const DashboardPage: React.FC = () => {
           )}
         </div>
 
-        {incompleteWorkCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowIncompleteWorkModal(true)}
-            className="w-full mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-            aria-label={`${incompleteWorkCount} invoices with work pending or in progress. Click to open list.`}
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-amber-900">
-                  {incompleteWorkCount} invoice{incompleteWorkCount !== 1 ? 's' : ''} with work pending or in progress
-                </p>
-                <p className="text-xs text-amber-700">Click to view pending and in-progress invoices</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-4 items-stretch">
+          {overdueWorkCount > 0 && (
+            <button
+              type="button"
+              onClick={() => openIncompleteWorkModal('overdue')}
+              className="w-full h-full flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-left transition-colors hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              aria-label={`${overdueWorkCount} invoices with work pending more than ${WORK_REMINDER_DAYS} days. Click to open list.`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Clock className="h-5 w-5 shrink-0 text-red-600" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-900">
+                    {overdueWorkCount} invoice{overdueWorkCount !== 1 ? 's' : ''} pending work for more than {WORK_REMINDER_DAYS} days
+                  </p>
+                  <p className="text-xs text-red-700">Click to review overdue work items</p>
+                </div>
               </div>
-            </div>
-            <span className="shrink-0 rounded-full bg-amber-600 px-2.5 py-1 text-xs font-bold text-white tabular-nums">
-              {incompleteWorkCount}
-            </span>
-          </button>
-        )}
+              <span className="shrink-0 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white tabular-nums">
+                {overdueWorkCount}
+              </span>
+            </button>
+          )}
+
+          {incompleteWorkCount > 0 && (
+            <button
+              type="button"
+              onClick={() => openIncompleteWorkModal('all')}
+              className="w-full h-full flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+              aria-label={`${incompleteWorkCount} invoices with work pending or in progress. Click to open list.`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {incompleteWorkCount} invoice{incompleteWorkCount !== 1 ? 's' : ''} with work pending or in progress
+                  </p>
+                  <p className="text-xs text-amber-700">Click to view pending and in-progress invoices</p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-amber-600 px-2.5 py-1 text-xs font-bold text-white tabular-nums">
+                {incompleteWorkCount}
+              </span>
+            </button>
+          )}
+
+          {(userRole === 'Admin' || userRole === 'MasterUser') && backupStatus?.isStale && (
+            <button
+              type="button"
+              onClick={() => navigate('/backup')}
+              className={`w-full h-full flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-left transition-colors focus:outline-none focus-visible:ring-2 ${
+                backupStatus.hasBackup
+                  ? 'border-orange-200 bg-orange-50 hover:bg-orange-100 focus-visible:ring-orange-400'
+                  : 'border-red-200 bg-red-50 hover:bg-red-100 focus-visible:ring-red-400'
+              }`}
+              aria-label="Backup is outdated. Click to open backup page."
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Database className={`h-5 w-5 shrink-0 ${backupStatus.hasBackup ? 'text-orange-600' : 'text-red-600'}`} aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${backupStatus.hasBackup ? 'text-orange-900' : 'text-red-900'}`}>
+                    {backupStatus.hasBackup
+                      ? `Last backup was ${formatDaysAgo(backupStatus.daysSinceBackup)}`
+                      : 'No backup found'}
+                  </p>
+                  <p className={`text-xs ${backupStatus.hasBackup ? 'text-orange-700' : 'text-red-700'}`}>
+                    {backupStatus.hasBackup
+                      ? `Backup is older than ${backupStatus.staleAfterDays} days — create a new backup`
+                      : 'Create a backup to protect your data'}
+                  </p>
+                </div>
+              </div>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold text-white tabular-nums ${
+                backupStatus.hasBackup ? 'bg-orange-600' : 'bg-red-600'
+              }`}>
+                {backupStatus.hasBackup ? `${backupStatus.daysSinceBackup}d` : '!'}
+              </span>
+            </button>
+          )}
+        </div>
 
         <DashboardStats
           stats={stats}
@@ -1036,9 +1145,16 @@ export const DashboardPage: React.FC = () => {
             <div className="ui-modal max-w-6xl">
               <div className="ui-modal-header">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">Pending & In-Progress Work</h2>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {incompleteWorkModalFilter === 'overdue'
+                      ? `Work Overdue (${WORK_REMINDER_DAYS}+ days)`
+                      : 'Pending & In-Progress Work'}
+                  </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {incompleteWorkCount} invoice{incompleteWorkCount !== 1 ? 's' : ''} need work completion
+                    {modalWorkInvoices.length} invoice{modalWorkInvoices.length !== 1 ? 's' : ''}
+                    {incompleteWorkModalFilter === 'overdue'
+                      ? ` open longer than ${WORK_REMINDER_DAYS} days`
+                      : ' need work completion'}
                   </p>
                 </div>
                 <button
@@ -1051,10 +1167,14 @@ export const DashboardPage: React.FC = () => {
                 </button>
               </div>
               <div className="ui-modal-body max-h-[70vh]">
-                {incompleteWorkInvoices.length === 0 ? (
+                {modalWorkInvoices.length === 0 ? (
                   <div className="text-center py-10">
                     <FileTextIcon className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500">No pending or in-progress invoices</p>
+                    <p className="text-sm text-slate-500">
+                      {incompleteWorkModalFilter === 'overdue'
+                        ? `No invoices open longer than ${WORK_REMINDER_DAYS} days`
+                        : 'No pending or in-progress invoices'}
+                    </p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1067,6 +1187,9 @@ export const DashboardPage: React.FC = () => {
                             <th className="hidden md:table-cell uppercase">User</th>
                           )}
                           <th className="hidden lg:table-cell uppercase">Date</th>
+                          {incompleteWorkModalFilter === 'overdue' && (
+                            <th className="uppercase">Days open</th>
+                          )}
                           <th className="uppercase">Amount</th>
                           <th className="hidden md:table-cell uppercase">Balance</th>
                           <th className="uppercase">Payment</th>
@@ -1075,7 +1198,7 @@ export const DashboardPage: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {incompleteWorkInvoices.map((invoice) => (
+                        {modalWorkInvoices.map((invoice) => (
                           <tr key={invoice.id}>
                             <td
                               className="cursor-pointer"
@@ -1094,6 +1217,13 @@ export const DashboardPage: React.FC = () => {
                               <td className="hidden md:table-cell whitespace-nowrap text-slate-500">{invoice.userName || '—'}</td>
                             )}
                             <td className="hidden lg:table-cell whitespace-nowrap text-slate-500">{formatDate(invoice.invoiceDate)}</td>
+                            {incompleteWorkModalFilter === 'overdue' && (
+                              <td className="whitespace-nowrap">
+                                <span className="text-xs font-semibold text-red-600 tabular-nums">
+                                  {getDaysSinceDate(invoice.invoiceDate)} days
+                                </span>
+                              </td>
+                            )}
                             <td className="font-semibold text-slate-900 whitespace-nowrap">₹{invoice.grandTotal.toLocaleString()}</td>
                             <td className="hidden md:table-cell whitespace-nowrap">
                               <span className={invoice.balanceAmount > 0 ? 'text-red-600 font-medium' : 'text-slate-500'}>

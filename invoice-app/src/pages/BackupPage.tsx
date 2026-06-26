@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import type { AxiosResponse } from 'axios';
-import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Database } from 'lucide-react';
 import { BackupDownloadModule, BackupUploadModule } from '../components/backup';
 import { api } from '../services/agent';
+import type { BackupStatus } from '../types';
 import { getApiErrorMessage } from '../utils/apiError';
 import { downloadBlob, getFilenameFromContentDisposition } from '../utils/downloadBlob';
+import { formatDaysAgo } from '../utils/helpers';
+import { useDateFormat } from '../hooks/useDateFormat';
 
 interface BackupInfo {
   fileName: string;
@@ -12,8 +15,23 @@ interface BackupInfo {
   createdDate: string;
 }
 
+const normalizeBackupStatus = (raw: Record<string, unknown>): BackupStatus => ({
+  hasBackup: Boolean(raw.hasBackup ?? raw.HasBackup),
+  lastBackupAt: (raw.lastBackupAt ?? raw.LastBackupAt ?? null) as string | null,
+  lastBackupFileName: (raw.lastBackupFileName ?? raw.LastBackupFileName ?? null) as string | null,
+  lastBackupSize: Number(raw.lastBackupSize ?? raw.LastBackupSize ?? 0),
+  totalBackups: Number(raw.totalBackups ?? raw.TotalBackups ?? 0),
+  daysSinceBackup: raw.daysSinceBackup != null || raw.DaysSinceBackup != null
+    ? Number(raw.daysSinceBackup ?? raw.DaysSinceBackup)
+    : null,
+  staleAfterDays: Number(raw.staleAfterDays ?? raw.StaleAfterDays ?? 7),
+  isStale: Boolean(raw.isStale ?? raw.IsStale),
+});
+
 export const BackupPage: React.FC = () => {
+  const formatDate = useDateFormat();
   const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -24,8 +42,14 @@ export const BackupPage: React.FC = () => {
   const loadBackups = async () => {
     try {
       setLoading(true);
-      const response = await api.backup.list();
-      setBackups(response.data || []);
+      const [listResponse, statusResponse] = await Promise.all([
+        api.backup.list(),
+        api.backup.status(),
+      ]);
+      setBackups(listResponse.data || []);
+      const raw = statusResponse.data;
+      const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+      setBackupStatus(normalizeBackupStatus(data));
       setError('');
     } catch (err: unknown) {
       const message =
@@ -126,6 +150,68 @@ export const BackupPage: React.FC = () => {
           Download backups to your local machine or upload a backup ZIP file to restore data.
         </p>
       </div>
+
+      {backupStatus && (
+        <div className={`mb-6 rounded-lg border px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+          !backupStatus.hasBackup
+            ? 'border-red-200 bg-red-50'
+            : backupStatus.isStale
+              ? 'border-orange-200 bg-orange-50'
+              : 'border-green-200 bg-green-50'
+        }`}>
+          <div className="flex items-start gap-3 min-w-0">
+            <Database className={`h-5 w-5 shrink-0 mt-0.5 ${
+              !backupStatus.hasBackup
+                ? 'text-red-600'
+                : backupStatus.isStale
+                  ? 'text-orange-600'
+                  : 'text-green-600'
+            }`} />
+            <div className="min-w-0">
+              <p className={`text-sm font-semibold ${
+                !backupStatus.hasBackup
+                  ? 'text-red-900'
+                  : backupStatus.isStale
+                    ? 'text-orange-900'
+                    : 'text-green-900'
+              }`}>
+                Backup health: {!backupStatus.hasBackup ? 'No backup found' : backupStatus.isStale ? 'Needs attention' : 'Healthy'}
+              </p>
+              <p className={`text-xs mt-0.5 ${
+                !backupStatus.hasBackup
+                  ? 'text-red-700'
+                  : backupStatus.isStale
+                    ? 'text-orange-700'
+                    : 'text-green-700'
+              }`}>
+                {backupStatus.hasBackup ? (
+                  <>
+                    Last backup {formatDaysAgo(backupStatus.daysSinceBackup)}
+                    {backupStatus.lastBackupAt ? ` (${formatDate(backupStatus.lastBackupAt)})` : ''}
+                    {backupStatus.lastBackupFileName ? ` · ${backupStatus.lastBackupFileName}` : ''}
+                  </>
+                ) : (
+                  'Create your first backup to protect database and uploaded files.'
+                )}
+              </p>
+              {backupStatus.hasBackup && backupStatus.isStale && (
+                <p className="text-xs text-orange-700 mt-1">
+                  Backups older than {backupStatus.staleAfterDays} days are considered outdated.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className={`text-xs font-medium shrink-0 ${
+            !backupStatus.hasBackup
+              ? 'text-red-700'
+              : backupStatus.isStale
+                ? 'text-orange-700'
+                : 'text-green-700'
+          }`}>
+            {backupStatus.totalBackups} backup{backupStatus.totalBackups !== 1 ? 's' : ''} on server
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center">
