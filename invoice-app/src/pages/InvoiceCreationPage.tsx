@@ -141,21 +141,37 @@ export const InvoiceCreationPage: React.FC = () => {
     loadInvoiceLayouts();
   }, []);
 
+  const resolveInvoiceUserProfile = async (userId: string) => {
+    if (userId === profile?.id) {
+      return {
+        invoicePrefix: profile?.invoicePrefix || 'INV',
+        defaultGstPercentage: profile?.defaultGstPercentage ?? 18,
+      };
+    }
+    try {
+      const res = await api.user.getProfileById(userId);
+      const raw = res.data;
+      const profileObj = (raw && typeof raw === 'object'
+        ? (('data' in raw && raw.data && typeof raw.data === 'object') ? raw.data : raw)
+        : {}) as Record<string, unknown>;
+      return {
+        invoicePrefix: String(getProp(profileObj, 'invoicePrefix', 'InvoicePrefix') ?? 'INV'),
+        defaultGstPercentage: Number(getProp(profileObj, 'defaultGstPercentage', 'DefaultGstPercentage') ?? 18),
+      };
+    } catch {
+      return { invoicePrefix: 'INV', defaultGstPercentage: 18 };
+    }
+  };
+
   useEffect(() => {
     const loadPrefix = async () => {
-      let p = profile;
-      if (isAdmin && selectedUserForInvoice && selectedUserForInvoice !== profile?.id) {
-        try {
-          const res = await api.user.getProfileById(selectedUserForInvoice);
-          p = res.data;
-        } catch {
-          p = profile;
-        }
-      }
-      setInvoicePrefix(p?.invoicePrefix || 'INV');
+      const userId = isAdmin && selectedUserForInvoice ? selectedUserForInvoice : profile?.id;
+      if (!userId) return;
+      const { invoicePrefix } = await resolveInvoiceUserProfile(userId);
+      setInvoicePrefix(invoicePrefix);
     };
     loadPrefix();
-  }, [profile?.invoicePrefix, profile?.id, isAdmin, selectedUserForInvoice]);
+  }, [profile?.invoicePrefix, profile?.id, profile?.defaultGstPercentage, isAdmin, selectedUserForInvoice]);
 
   useEffect(() => {
     if (selectedUserForInvoice && isAdmin) {
@@ -247,8 +263,33 @@ export const InvoiceCreationPage: React.FC = () => {
     }
   };
 
-  const handleUserForInvoiceChange = (userId: string) => {
-    setSelectedUserForInvoice(userId || null);
+  const createEmptyLineItem = (gstPercentage: number): Partial<InvoiceItem> => ({
+    lineKey: `line_${Date.now()}`,
+    productName: '',
+    quantity: 1,
+    rate: 0,
+    gstPercentage,
+    affectTotal: true,
+    hierarchyLevel: 0,
+    displayOrder: 1,
+  });
+
+  const handleUserForInvoiceChange = async (userId: string) => {
+    if (!userId || userId === selectedUserForInvoice) return;
+
+    const { invoicePrefix, defaultGstPercentage } = await resolveInvoiceUserProfile(userId);
+
+    setSelectedUserForInvoice(userId);
+    setSelectedCustomer(null);
+    setInvoiceItems([]);
+    setInvoiceDate(new Date().toISOString().split('T')[0]);
+    setPaymentStatus('Unpaid');
+    setInitialPayment(0);
+    setInvoiceNumberError('');
+    setInvoicePrefix(invoicePrefix);
+    setItems([createEmptyLineItem(defaultGstPercentage)]);
+
+    await generateNextInvoiceNumber(userId, invoicePrefix);
   };
 
   const loadInvoiceLayouts = async () => {
@@ -308,21 +349,20 @@ export const InvoiceCreationPage: React.FC = () => {
     }
   };
 
-  const generateNextInvoiceNumber = async () => {
+  const generateNextInvoiceNumber = async (overrideUserId?: string, overridePrefix?: string) => {
     try {
-      let p = profile;
-      if (isAdmin && selectedUserForInvoice && selectedUserForInvoice !== profile?.id) {
-        try {
-          const res = await api.user.getProfileById(selectedUserForInvoice);
-          p = res.data;
-        } catch {
-          p = profile;
+      const effectiveUserId = overrideUserId ?? selectedUserForInvoice;
+      let prefix = overridePrefix;
+      if (!prefix) {
+        const userId = (isAdmin && effectiveUserId) ? effectiveUserId : profile?.id;
+        if (userId) {
+          const resolved = await resolveInvoiceUserProfile(userId);
+          prefix = resolved.invoicePrefix;
+        } else {
+          const refreshed = await loadProfile();
+          prefix = refreshed?.invoicePrefix || 'INV';
         }
       }
-      if (!p?.invoicePrefix) {
-        p = await loadProfile();
-      }
-      const prefix = p?.invoicePrefix || 'INV';
       const fy = getFinancialYearString(invoiceDate ? parseLocalDate(invoiceDate) : new Date());
       const fySuffix = ` / ${fy}`;
 
@@ -332,7 +372,7 @@ export const InvoiceCreationPage: React.FC = () => {
       const invoices = invoicesResponse.data || [];
 
       // Target user: when admin creates on behalf of another user, use that user; otherwise current user
-      const targetUserId = (isAdmin && selectedUserForInvoice) ? selectedUserForInvoice : profile?.id;
+      const targetUserId = (isAdmin && effectiveUserId) ? effectiveUserId : profile?.id;
 
       // Only consider invoices for the TARGET USER with same prefix AND current FY (format: INV0001 / 2024-25)
       const invoicesThisFy = invoices.filter(
@@ -437,6 +477,7 @@ export const InvoiceCreationPage: React.FC = () => {
           {/* Left Side - Invoice Form */}
           <div className='lg:col-span-1'>
             <InvoiceForm
+              key={selectedUserForInvoice ?? profile?.id ?? 'invoice-form'}
               customers={customers}
               onInvoiceCreate={handleInvoiceCreate}
               onCustomerAdded={handleCustomerAdded}

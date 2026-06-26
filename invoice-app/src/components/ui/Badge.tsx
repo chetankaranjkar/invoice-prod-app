@@ -39,3 +39,17 @@ export const InvoiceStatusBadge: React.FC<{ status: string }> = ({ status }) => 
     </Badge>
   );
 };
+
+/** Map work completion status to a badge tone */
+export const WorkStatusBadge: React.FC<{ workStatus: string }> = ({ workStatus }) => {
+  const map: Record<string, Tone> = {
+    Pending: 'warning',
+    'In Progress': 'info',
+    Completed: 'success',
+  };
+  return (
+    <Badge tone={map[workStatus] ?? 'neutral'} dot>
+      {workStatus}
+    </Badge>
+  );
+};

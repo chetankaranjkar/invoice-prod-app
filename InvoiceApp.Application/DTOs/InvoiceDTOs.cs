@@ -65,6 +65,12 @@ namespace InvoiceApp.Application.DTOs
         public string InvoiceDate { get; set; } = null!;
     }
 
+    public class UpdateWorkStatusDto
+    {
+        [JsonProperty("workStatus")]
+        public string WorkStatus { get; set; } = null!;
+    }
+
     /// <summary>
     /// Company/seller info of the user who created the invoice.
     /// When admin views another user's invoice, this shows the creator's company details (not admin's).
@@ -120,6 +126,7 @@ namespace InvoiceApp.Application.DTOs
         public decimal WaveAmount { get; set; } = 0; // Total wave off/discount amount
         public decimal BalanceAmount { get; set; }
         public string Status { get; set; } = "Unpaid";
+        public string WorkStatus { get; set; } = "Pending";
         public List<InvoiceItemDto> Items { get; set; } = new();
         public List<PaymentDto> Payments { get; set; } = new();
     }

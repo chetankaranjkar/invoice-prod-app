@@ -5,12 +5,13 @@ import { DynamicInvoiceRenderer } from '../components/invoice-layout/DynamicInvo
 import TaxInvoice from '../components/static-invoice/TaxInvoice';
 import TaxInvoiceV2 from '../components/static-invoice-v2/TaxInvoice';
 import { api } from '../services/agent';
-import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, InvoiceLayoutConfigDto } from '../types';
+import type { DashboardStats as DashboardStatsType, Customer, Invoice, PaymentStatus, WorkStatus, InvoiceLayoutConfigDto } from '../types';
+import { WORK_STATUS_OPTIONS } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, FileText as FileTextIcon } from 'lucide-react';
+import { X, Download, Edit, Trash2, Copy, Printer, DollarSign, ArrowUpDown, ArrowUp, ArrowDown, FileText as FileTextIcon, AlertCircle } from 'lucide-react';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { InvoiceStatusBadge } from '../components/ui/Badge';
-import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage } from '../utils/helpers';
+import { InvoiceStatusBadge, WorkStatusBadge } from '../components/ui/Badge';
+import { sellerInfoToCompanyInfo, formatCurrency, getApiErrorMessage, normalizeWorkStatus, isWorkIncomplete } from '../utils/helpers';
 import { useDateFormat } from '../hooks/useDateFormat';
 import { AddPaymentModal } from '../components/AddPaymentModal';
 import { UpdateInvoiceDateModal, UpdateInvoiceDateButton } from '../components/UpdateInvoiceDateModal';
@@ -36,8 +37,9 @@ export const DashboardPage: React.FC = () => {
   const [invoiceCustomerFilter, setInvoiceCustomerFilter] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<PaymentStatus | 'all'>('all');
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  const [showAllInvoices, setShowAllInvoices] = useState<boolean>(false);
+  const [showAllInvoices, setShowAllInvoices] = useState<boolean>(true);
   const [showPendingInvoices, setShowPendingInvoices] = useState<boolean>(false);
+  const [showIncompleteWorkOnly, setShowIncompleteWorkOnly] = useState<boolean>(true);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loadingInvoiceDetails, setLoadingInvoiceDetails] = useState(false);
@@ -46,9 +48,11 @@ export const DashboardPage: React.FC = () => {
   const [layoutConfigs, setLayoutConfigs] = useState<InvoiceLayoutConfigDto[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>('static');
   const [showPendingByUserModal, setShowPendingByUserModal] = useState(false);
+  const [showIncompleteWorkModal, setShowIncompleteWorkModal] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [invoiceForDateUpdate, setInvoiceForDateUpdate] = useState<Invoice | null>(null);
+  const [updatingWorkStatusId, setUpdatingWorkStatusId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<'date' | 'invoiceNumber' | 'customer' | 'amount' | 'balance'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -253,10 +257,26 @@ export const DashboardPage: React.FC = () => {
 
   const handleViewPending = () => {
     setShowPendingInvoices(true);
+    setShowIncompleteWorkOnly(false);
     setShowAllInvoices(true); // Show all invoices view
     setSelectedStatusFilter('all'); // Reset status filter
     setInvoiceCustomerFilter(''); // Reset customer filter
     // Scroll to invoices section
+    setTimeout(() => {
+      const invoicesSection = document.getElementById('invoices-section');
+      if (invoicesSection) {
+        invoicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
+  const handleViewIncompleteWork = () => {
+    setShowIncompleteWorkModal(false);
+    setShowIncompleteWorkOnly(true);
+    setShowPendingInvoices(false);
+    setShowAllInvoices(true);
+    setSelectedStatusFilter('all');
+    setInvoiceCustomerFilter('');
     setTimeout(() => {
       const invoicesSection = document.getElementById('invoices-section');
       if (invoicesSection) {
@@ -341,6 +361,11 @@ export const DashboardPage: React.FC = () => {
       filtered = filtered.filter(inv => inv.balanceAmount > 0);
     }
 
+    // Filter work not completed (Pending or In Progress)
+    if (showIncompleteWorkOnly) {
+      filtered = filtered.filter((inv) => isWorkIncomplete(inv));
+    }
+
     // Filter by customer name (typed substring, or exact id match via full name)
     if (invoiceFilterExactCustomer) {
       filtered = filtered.filter((inv) => inv.customerId === invoiceFilterExactCustomer.id);
@@ -358,6 +383,19 @@ export const DashboardPage: React.FC = () => {
 
     return filtered;
   };
+
+  const incompleteWorkCount = React.useMemo(
+    () => allInvoices.filter((inv) => isWorkIncomplete(inv)).length,
+    [allInvoices],
+  );
+
+  const incompleteWorkInvoices = React.useMemo(
+    () =>
+      allInvoices
+        .filter((inv) => isWorkIncomplete(inv))
+        .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()),
+    [allInvoices],
+  );
 
   const filteredInvoices = getFilteredInvoices();
 
@@ -391,7 +429,7 @@ export const DashboardPage: React.FC = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [invoiceCustomerFilter, selectedStatusFilter, showAllInvoices, showPendingInvoices]);
+  }, [invoiceCustomerFilter, selectedStatusFilter, showAllInvoices, showPendingInvoices, showIncompleteWorkOnly]);
 
   // Get available years from invoices
   const getAvailableYears = (): number[] => {
@@ -443,6 +481,7 @@ export const DashboardPage: React.FC = () => {
               'Waved Amount': invoice.waveAmount || 0,
               'Balance Amount': invoice.balanceAmount || 0,
               'Status': invoice.status || 'Unpaid',
+              'Work Status': normalizeWorkStatus(invoice),
             });
           });
         } else {
@@ -471,6 +510,7 @@ export const DashboardPage: React.FC = () => {
             'Waved Amount': invoice.waveAmount || 0,
             'Balance Amount': invoice.balanceAmount || 0,
             'Status': invoice.status || 'Unpaid',
+            'Work Status': normalizeWorkStatus(invoice),
           });
         }
       });
@@ -546,6 +586,7 @@ export const DashboardPage: React.FC = () => {
               'Waved Amount': invoice.waveAmount || 0,
               'Balance Amount': invoice.balanceAmount || 0,
               'Status': invoice.status || 'Unpaid',
+              'Work Status': normalizeWorkStatus(invoice),
             });
           });
         } else {
@@ -574,6 +615,7 @@ export const DashboardPage: React.FC = () => {
             'Waved Amount': invoice.waveAmount || 0,
             'Balance Amount': invoice.balanceAmount || 0,
             'Status': invoice.status || 'Unpaid',
+            'Work Status': normalizeWorkStatus(invoice),
           });
         }
       });
@@ -651,6 +693,43 @@ export const DashboardPage: React.FC = () => {
     }));
     if (selectedInvoice?.id === updated.id) {
       setSelectedInvoice((prev) => (prev ? { ...prev, invoiceDate: updated.invoiceDate } : prev));
+    }
+  };
+
+  const handleWorkStatusChange = async (invoice: Invoice, workStatus: WorkStatus) => {
+    const previous = normalizeWorkStatus(invoice);
+    if (previous === workStatus) return;
+
+    if (
+      !window.confirm(
+        `Change work status for invoice ${invoice.invoiceNumber} from "${previous}" to "${workStatus}"?`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setUpdatingWorkStatusId(invoice.id);
+      const response = await api.invoices.updateWorkStatus(invoice.id, workStatus);
+      const updated = response.data as Invoice;
+      const nextWorkStatus = ((updated.workStatus ?? (updated as { WorkStatus?: string }).WorkStatus) ?? workStatus) as WorkStatus;
+
+      setAllInvoices((prev) =>
+        prev.map((inv) => (inv.id === invoice.id ? { ...inv, workStatus: nextWorkStatus } : inv))
+      );
+      setStats((prev) => ({
+        ...prev,
+        recentInvoices: prev.recentInvoices.map((inv) =>
+          inv.id === invoice.id ? { ...inv, workStatus: nextWorkStatus } : inv
+        ),
+      }));
+      if (selectedInvoice?.id === invoice.id) {
+        setSelectedInvoice((prev) => (prev ? { ...prev, workStatus: nextWorkStatus } : prev));
+      }
+    } catch (error: unknown) {
+      alert(`Failed to update work status: ${getApiErrorMessage(error as Parameters<typeof getApiErrorMessage>[0], 'Please try again.')}`);
+    } finally {
+      setUpdatingWorkStatusId(null);
     }
   };
 
@@ -920,6 +999,28 @@ export const DashboardPage: React.FC = () => {
           )}
         </div>
 
+        {incompleteWorkCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowIncompleteWorkModal(true)}
+            className="w-full mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+            aria-label={`${incompleteWorkCount} invoices with work pending or in progress. Click to open list.`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <AlertCircle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-amber-900">
+                  {incompleteWorkCount} invoice{incompleteWorkCount !== 1 ? 's' : ''} with work pending or in progress
+                </p>
+                <p className="text-xs text-amber-700">Click to view pending and in-progress invoices</p>
+              </div>
+            </div>
+            <span className="shrink-0 rounded-full bg-amber-600 px-2.5 py-1 text-xs font-bold text-white tabular-nums">
+              {incompleteWorkCount}
+            </span>
+          </button>
+        )}
+
         <DashboardStats
           stats={stats}
           userRole={userRole}
@@ -929,6 +1030,149 @@ export const DashboardPage: React.FC = () => {
           onViewPendingByUser={handleViewPendingByUser}
           onViewAllCustomers={handleViewAllCustomers}
         />
+
+        {showIncompleteWorkModal && (
+          <div className="ui-modal-backdrop">
+            <div className="ui-modal max-w-6xl">
+              <div className="ui-modal-header">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Pending & In-Progress Work</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {incompleteWorkCount} invoice{incompleteWorkCount !== 1 ? 's' : ''} need work completion
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowIncompleteWorkModal(false)}
+                  className="p-1.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  title="Close"
+                  aria-label="Close pending work invoices"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="ui-modal-body max-h-[70vh]">
+                {incompleteWorkInvoices.length === 0 ? (
+                  <div className="text-center py-10">
+                    <FileTextIcon className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No pending or in-progress invoices</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="ui-table">
+                      <thead>
+                        <tr>
+                          <th className="uppercase">Invoice #</th>
+                          <th className="uppercase">Customer</th>
+                          {(userRole === 'MasterUser' || userRole === 'Admin') && (
+                            <th className="hidden md:table-cell uppercase">User</th>
+                          )}
+                          <th className="hidden lg:table-cell uppercase">Date</th>
+                          <th className="uppercase">Amount</th>
+                          <th className="hidden md:table-cell uppercase">Balance</th>
+                          <th className="uppercase">Payment</th>
+                          <th className="uppercase">Work</th>
+                          <th className="text-right uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {incompleteWorkInvoices.map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td
+                              className="cursor-pointer"
+                              onClick={() => {
+                                setShowIncompleteWorkModal(false);
+                                handleViewInvoice(invoice);
+                              }}
+                            >
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-indigo-600 hover:text-indigo-700 whitespace-nowrap">{invoice.invoiceNumber}</span>
+                                <span className="text-xs text-slate-500 sm:hidden mt-0.5">{invoice.customerName}</span>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap">{invoice.customerName}</td>
+                            {(userRole === 'MasterUser' || userRole === 'Admin') && (
+                              <td className="hidden md:table-cell whitespace-nowrap text-slate-500">{invoice.userName || '—'}</td>
+                            )}
+                            <td className="hidden lg:table-cell whitespace-nowrap text-slate-500">{formatDate(invoice.invoiceDate)}</td>
+                            <td className="font-semibold text-slate-900 whitespace-nowrap">₹{invoice.grandTotal.toLocaleString()}</td>
+                            <td className="hidden md:table-cell whitespace-nowrap">
+                              <span className={invoice.balanceAmount > 0 ? 'text-red-600 font-medium' : 'text-slate-500'}>
+                                ₹{invoice.balanceAmount.toLocaleString()}
+                              </span>
+                            </td>
+                            <td>
+                              <InvoiceStatusBadge status={invoice.status} />
+                            </td>
+                            <td onClick={(e) => e.stopPropagation()}>
+                              {userRole === 'MasterUser' ? (
+                                <WorkStatusBadge workStatus={normalizeWorkStatus(invoice)} />
+                              ) : (
+                                <select
+                                  value={normalizeWorkStatus(invoice)}
+                                  onChange={(e) => handleWorkStatusChange(invoice, e.target.value as WorkStatus)}
+                                  disabled={updatingWorkStatusId === invoice.id}
+                                  className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-700 min-w-[7.5rem] focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-60"
+                                  title="Work completion status"
+                                  aria-label={`Work status for invoice ${invoice.invoiceNumber}`}
+                                >
+                                  {WORK_STATUS_OPTIONS.map((option) => (
+                                    <option key={option} value={option}>
+                                      {option}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </td>
+                            <td className="text-right">
+                              <div className="flex items-center gap-1 justify-end">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowIncompleteWorkModal(false);
+                                    handleViewInvoice(invoice);
+                                  }}
+                                  className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                  title="View Invoice"
+                                >
+                                  <FileTextIcon className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowIncompleteWorkModal(false);
+                                    navigate(`/invoices/edit/${invoice.id}`);
+                                  }}
+                                  className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                  title="Edit Invoice"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+              <div className="ui-modal-footer justify-between gap-3">
+                <button
+                  onClick={handleViewIncompleteWork}
+                  className="ui-btn-secondary"
+                >
+                  Open in dashboard grid
+                </button>
+                <button
+                  onClick={() => setShowIncompleteWorkModal(false)}
+                  className="ui-btn-primary"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Pending Amount by User Modal */}
         {showPendingByUserModal && (
@@ -1030,6 +1274,8 @@ export const DashboardPage: React.FC = () => {
                 <h2 className="text-base font-semibold text-slate-900">
                   {showPendingInvoices
                     ? 'Pending Invoices'
+                    : showIncompleteWorkOnly
+                      ? 'Work Not Completed'
                     : invoiceFilterExactCustomer
                       ? `Invoices · ${invoiceFilterExactCustomer.customerName}`
                       : trimmedCustomerInvoice
@@ -1049,10 +1295,31 @@ export const DashboardPage: React.FC = () => {
                     Clear filter
                   </button>
                 )}
+                {showIncompleteWorkOnly && (
+                  <button
+                    onClick={() => { setShowIncompleteWorkOnly(false); setShowAllInvoices(false); }}
+                    className="ui-btn-ghost ui-btn-sm"
+                  >
+                    Clear filter
+                  </button>
+                )}
               </div>
               <div className="flex flex-wrap gap-2 items-center">
                 <button
-                  onClick={() => { setShowAllInvoices(!showAllInvoices); setShowPendingInvoices(false); }}
+                  onClick={() => {
+                    setShowIncompleteWorkOnly(!showIncompleteWorkOnly);
+                    setShowPendingInvoices(false);
+                    if (!showIncompleteWorkOnly) setShowAllInvoices(true);
+                  }}
+                  className={showIncompleteWorkOnly ? 'ui-btn-primary ui-btn-sm' : 'ui-btn-secondary ui-btn-sm'}
+                  title="Show invoices where work is Pending or In Progress"
+                >
+                  {showIncompleteWorkOnly
+                    ? `Showing incomplete (${sortedInvoices.length})`
+                    : `Work not complete (${incompleteWorkCount})`}
+                </button>
+                <button
+                  onClick={() => { setShowAllInvoices(!showAllInvoices); setShowPendingInvoices(false); setShowIncompleteWorkOnly(false); }}
                   className={showAllInvoices ? 'ui-btn-primary ui-btn-sm' : 'ui-btn-secondary ui-btn-sm'}
                   title={showAllInvoices ? 'Show only current month invoices' : 'Show all invoices'}
                 >
@@ -1145,7 +1412,8 @@ export const DashboardPage: React.FC = () => {
                           Balance <SortIcon column="balance" />
                         </button>
                       </th>
-                      <th className="uppercase">Status</th>
+                      <th className="uppercase">Payment</th>
+                      <th className="uppercase">Work</th>
                       <th className="text-right uppercase">Actions</th>
                     </tr>
                   </thead>
@@ -1187,6 +1455,26 @@ export const DashboardPage: React.FC = () => {
                             </button>
                           ) : (
                             <InvoiceStatusBadge status={invoice.status} />
+                          )}
+                        </td>
+                        <td onClick={(e) => e.stopPropagation()}>
+                          {userRole === 'MasterUser' ? (
+                            <WorkStatusBadge workStatus={normalizeWorkStatus(invoice)} />
+                          ) : (
+                            <select
+                              value={normalizeWorkStatus(invoice)}
+                              onChange={(e) => handleWorkStatusChange(invoice, e.target.value as WorkStatus)}
+                              disabled={updatingWorkStatusId === invoice.id}
+                              className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-700 min-w-[7.5rem] focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-60"
+                              title="Work completion status"
+                              aria-label={`Work status for invoice ${invoice.invoiceNumber}`}
+                            >
+                              {WORK_STATUS_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
                           )}
                         </td>
                         <td className="text-right">

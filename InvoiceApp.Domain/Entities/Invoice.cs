@@ -24,6 +24,8 @@ namespace InvoiceApp.Domain.Entities
         public decimal WaveAmount { get; set; } = 0m; // Total wave off/discount amount
         public decimal BalanceAmount { get; set; } = 0m;
         public string Status { get; set; } = "Unpaid";
+        /// <summary>Tracks whether the work/service behind this invoice is complete (separate from payment status).</summary>
+        public string WorkStatus { get; set; } = "Pending";
 
         /// <summary>JSON snapshot of seller/company info at invoice creation. Ensures invoice always shows creator's details as they were when created, even if profile changes later.</summary>
         public string? SellerInfoSnapshot { get; set; }

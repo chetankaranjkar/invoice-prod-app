@@ -1,5 +1,5 @@
 import { ToWords } from 'to-words';
-import type { CompanyInfo, InvoiceSellerInfo } from '../types';
+import type { CompanyInfo, InvoiceSellerInfo, WorkStatus } from '../types';
 
 /** Extract user-friendly error message from API error. Handles string body, { message }, { detail }, { title }, and status-based fallbacks. */
 export const getApiErrorMessage = (
@@ -42,6 +42,20 @@ const getBool = (s: SellerInfoRaw, camel: string, pascal: string): boolean => {
   if (val == null) return true; // default when not in snapshot
   return val === true || val === 'true' || val === 1;
 };
+
+/** Normalize invoice work status from API (camelCase or PascalCase). */
+export const normalizeWorkStatus = (
+  invoice: { workStatus?: string; WorkStatus?: string } | null | undefined,
+): WorkStatus => {
+  if (!invoice) return 'Pending';
+  const raw = invoice.workStatus ?? invoice.WorkStatus ?? 'Pending';
+  if (raw === 'In Progress' || raw === 'Completed') return raw;
+  return 'Pending';
+};
+
+export const isWorkIncomplete = (
+  invoice: { workStatus?: string; WorkStatus?: string } | null | undefined,
+): boolean => normalizeWorkStatus(invoice) !== 'Completed';
 
 /** Whether to show the uploaded company logo on invoice templates. */
 export const shouldShowInvoiceLogo = (company: CompanyInfo | null | undefined): boolean =>

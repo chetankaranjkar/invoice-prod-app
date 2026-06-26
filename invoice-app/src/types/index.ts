@@ -1,4 +1,7 @@
 export type PaymentStatus = 'Draft' | 'Sent' | 'Unpaid' | 'Partially Paid' | 'Paid';
+export type WorkStatus = 'Pending' | 'In Progress' | 'Completed';
+
+export const WORK_STATUS_OPTIONS: WorkStatus[] = ['Pending', 'In Progress', 'Completed'];
 
 export interface CreateInvoiceDto {
   customerId: number;
@@ -428,6 +431,7 @@ export interface Invoice {
   waveAmount: number; // Total wave off/discount amount
   balanceAmount: number;
   status: PaymentStatus; // Use the new type
+  workStatus?: WorkStatus;
   items: InvoiceItem[];
   payments: Payment[];
 }

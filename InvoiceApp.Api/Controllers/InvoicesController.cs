@@ -273,6 +273,48 @@ namespace InvoiceApp.Api.Controllers
             }
         }
 
+        [HttpPatch("{id}/work-status")]
+        public async Task<ActionResult<InvoiceDto>> UpdateWorkStatus(int id, UpdateWorkStatusDto dto)
+        {
+            var userId = _userContext.GetCurrentUserId();
+            var userRole = _userContext.GetCurrentUserRole();
+            if (userId == null || string.IsNullOrEmpty(userRole))
+                return Unauthorized("User not authenticated");
+
+            if (userRole == "MasterUser")
+                return Forbid("MasterUser cannot update invoices.");
+
+            try
+            {
+                var originalInvoice = await _invoiceService.GetInvoiceByIdAsync(id, userId.Value, userRole);
+                var invoice = await _invoiceService.UpdateWorkStatusAsync(id, userId.Value, dto, userRole);
+
+                await _auditService.LogActionAsync(
+                    userId.Value,
+                    _userContext.GetCurrentUserName(),
+                    _userContext.GetCurrentUserEmail(),
+                    "UPDATE",
+                    "Invoice",
+                    invoice.Id.ToString(),
+                    invoice.InvoiceNumber,
+                    originalInvoice != null ? new { originalInvoice.WorkStatus } : null,
+                    new { invoice.WorkStatus },
+                    $"Updated work status for {invoice.InvoiceNumber} to {invoice.WorkStatus}",
+                    null,
+                    HttpContext);
+
+                return Ok(invoice);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
+        }
+
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteInvoice(int id)
         {

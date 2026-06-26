@@ -114,6 +114,7 @@ namespace InvoiceApp.Application.Services
                 GrandTotal = grandTotal,
                 BalanceAmount = grandTotal,
                 Status = createInvoiceDto.Status ?? "Unpaid", // Default to Unpaid
+                WorkStatus = "Pending",
                 InvoiceItems = invoiceItems
             };
 
@@ -508,6 +509,32 @@ namespace InvoiceApp.Application.Services
             return _mapper.Map<InvoiceDto>(invoice);
         }
 
+        public async Task<InvoiceDto> UpdateWorkStatusAsync(
+            int invoiceId, Guid userId, UpdateWorkStatusDto dto, string? userRole = null)
+        {
+            if (userRole == "MasterUser")
+                throw new UnauthorizedAccessException("MasterUser cannot update invoices.");
+
+            var workStatus = dto.WorkStatus?.Trim();
+            if (string.IsNullOrEmpty(workStatus) ||
+                !new[] { "Pending", "In Progress", "Completed" }.Contains(workStatus))
+            {
+                throw new ArgumentException("Invalid work status. Use Pending, In Progress, or Completed.");
+            }
+
+            var invoice = await _invoiceRepository.GetByIdAsync(invoiceId);
+            if (invoice == null)
+                throw new ArgumentException("Invoice not found");
+
+            if (!CanModifyInvoice(invoice, userId, userRole))
+                throw new UnauthorizedAccessException("You don't have permission to update this invoice");
+
+            invoice.WorkStatus = workStatus;
+            await _invoiceRepository.UpdateAsync(invoice);
+
+            return _mapper.Map<InvoiceDto>(invoice);
+        }
+
         private static bool CanModifyInvoice(Invoice invoice, Guid userId, string? userRole)
         {
             if (userRole == "MasterUser")
@@ -629,6 +656,7 @@ namespace InvoiceApp.Application.Services
                 WaveAmount = 0,
                 BalanceAmount = originalInvoice.GrandTotal,
                 Status = "Unpaid",
+                WorkStatus = "Pending",
                 InvoiceItems = DuplicateInvoiceItems(originalInvoice.InvoiceItems)
             };
 

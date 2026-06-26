@@ -261,6 +261,8 @@ export const api = {
     update: (id: number, data: any) => agent.put<any>(`Invoices/${id}`, data),
     updateInvoiceDate: (id: number, invoiceDate: string) =>
       agent.patch<any>(`Invoices/${id}/invoice-date`, { invoiceDate }),
+    updateWorkStatus: (id: number, workStatus: string) =>
+      agent.patch<any>(`Invoices/${id}/work-status`, { workStatus }),
     delete: (id: number) => agent.delete<any>(`Invoices/${id}`),
     duplicate: (id: number) => agent.post<any>(`Invoices/${id}/duplicate`, {}),
     addPayment: (id: number, data: any) => agent.post(`Invoices/${id}/payments`, data),

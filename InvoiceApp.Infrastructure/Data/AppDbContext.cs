@@ -158,6 +158,7 @@ namespace InvoiceApp.Infrastructure.Data
                 entity.Property(i => i.WaveAmount).HasPrecision(18, 2);
                 entity.Property(i => i.BalanceAmount).HasPrecision(18, 2);
                 entity.Property(i => i.Status).HasMaxLength(20);
+                entity.Property(i => i.WorkStatus).HasMaxLength(30).HasDefaultValue("Pending");
                 entity.Property(i => i.SellerInfoSnapshot).HasColumnType("nvarchar(max)");
 
                 // InvoiceNumber unique per user (each user has own sequence: INV0001, INV0002, etc.)
