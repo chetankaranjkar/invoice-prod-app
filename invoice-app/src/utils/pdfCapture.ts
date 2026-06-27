@@ -145,6 +145,23 @@ export const PDF_SAFE_INVOICE_CSS = `
 .pdf-export td {
   border-color: #9ca3af !important;
 }
+/* Thinner table borders in PDF output. */
+.pdf-export .invoice-table,
+.pdf-export .invoice-hierarchy-table,
+.pdf-export .invoice-description-table {
+  border-width: 0.5px !important;
+}
+.pdf-export .invoice-hierarchy-table-wrap,
+.pdf-export .invoice-description-table-wrap {
+  border-width: 0.5px !important;
+}
+.pdf-export .invoice-table th,
+.pdf-export .invoice-table td,
+.pdf-export .invoice-table tr,
+.pdf-export .invoice-hierarchy-table th,
+.pdf-export .invoice-hierarchy-table td {
+  border-width: 0.5px !important;
+}
 `;
 
 export function sanitizeClonedDocumentForHtml2Canvas(

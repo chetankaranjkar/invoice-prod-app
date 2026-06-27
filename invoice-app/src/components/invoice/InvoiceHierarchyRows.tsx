@@ -7,11 +7,15 @@ import {
 
 export type InvoiceTableVariant = 'classic' | 'modern' | 'preview';
 
+/** Minimum item rows shown in invoice tables (padded with empty rows when fewer items). */
+export const MIN_VISIBLE_ROWS = 10;
+
 export interface InvoiceHierarchyRowsProps {
   items: InvoiceItem[];
   variant?: InvoiceTableVariant;
   emptyMessage?: string;
   renderOptions?: FlattenHierarchyOptions;
+  minVisibleRows?: number;
 }
 
 const variantStyles: Record<
@@ -71,11 +75,38 @@ function formatAmount(
   return `₹${amount.toFixed(2)}`;
 }
 
+function renderPaddingRows(
+  count: number,
+  variant: InvoiceTableVariant,
+  keyPrefix: string
+): React.ReactNode {
+  if (count <= 0) return null;
+
+  const styles = variantStyles[variant];
+
+  return Array.from({ length: count }, (_, index) => (
+    <tr
+      key={`${keyPrefix}-${index}`}
+      className={`${styles.row} invoice-empty-row bg-white`}
+      aria-hidden="true"
+    >
+      <td className={`${styles.sr} w-[7%] min-w-[2rem]`}>&nbsp;</td>
+      <td className={`${styles.cellBorder} px-2 py-2 align-top`}>&nbsp;</td>
+      <td
+        className={`${styles.cellBorder} px-2 py-2 text-right align-top w-[18%]`}
+      >
+        &nbsp;
+      </td>
+    </tr>
+  ));
+}
+
 export const InvoiceHierarchyRows: React.FC<InvoiceHierarchyRowsProps> = ({
   items,
   variant = 'modern',
   emptyMessage = 'No items added yet.',
   renderOptions,
+  minVisibleRows,
 }) => {
   const styles = variantStyles[variant];
   const showSubItemAmounts = renderOptions?.showSubItemAmounts !== false;
@@ -91,7 +122,31 @@ export const InvoiceHierarchyRows: React.FC<InvoiceHierarchyRowsProps> = ({
     [items, renderOptions]
   );
 
+  const paddingRowCount =
+    minVisibleRows != null ? Math.max(0, minVisibleRows - rows.length) : 0;
+
   if (rows.length === 0) {
+    if (minVisibleRows != null && minVisibleRows > 0) {
+      return (
+        <>
+          <tr className={`${styles.row} bg-white`}>
+            <td className={`${styles.sr} w-[7%] min-w-[2rem]`}>&nbsp;</td>
+            <td
+              className={`${styles.cellBorder} px-2 py-4 align-top text-center text-[#6b7280]`}
+            >
+              {emptyMessage}
+            </td>
+            <td
+              className={`${styles.cellBorder} px-2 py-2 text-right align-top w-[18%]`}
+            >
+              &nbsp;
+            </td>
+          </tr>
+          {renderPaddingRows(paddingRowCount - 1, variant, 'empty-padding')}
+        </>
+      );
+    }
+
     return (
       <tr>
         <td
@@ -157,6 +212,7 @@ export const InvoiceHierarchyRows: React.FC<InvoiceHierarchyRowsProps> = ({
           </tr>
         );
       })}
+      {renderPaddingRows(paddingRowCount, variant, 'item-padding')}
     </>
   );
 };
@@ -168,12 +224,14 @@ export const InvoiceItemsTable: React.FC<{
   items: InvoiceItem[];
   footer?: React.ReactNode;
   renderOptions?: FlattenHierarchyOptions;
+  minVisibleRows?: number;
 }> = ({
   variant,
   headerVariant = variant === 'classic' ? 'classic' : 'modern',
   items,
   footer,
   renderOptions,
+  minVisibleRows,
 }) => {
   const isModern = headerVariant === 'modern';
 
@@ -210,6 +268,7 @@ export const InvoiceItemsTable: React.FC<{
             items={items}
             variant={variant}
             renderOptions={renderOptions}
+            minVisibleRows={minVisibleRows}
           />
         </tbody>
         {footer}

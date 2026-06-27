@@ -1,6 +1,6 @@
 import type { InvoiceItem } from '../../../../types';
 import { calculateInvoiceTotals } from '../../../../utils/invoiceCalculations';
-import { InvoiceItemsTable } from '../../../invoice/InvoiceHierarchyRows';
+import { InvoiceItemsTable, MIN_VISIBLE_ROWS } from '../../../invoice/InvoiceHierarchyRows';
 
 interface StaticInvoiceItemsProps {
   items: InvoiceItem[];
@@ -14,6 +14,7 @@ function StaticInvoiceItems({ items }: StaticInvoiceItemsProps) {
       variant="classic"
       headerVariant="classic"
       items={items}
+      minVisibleRows={MIN_VISIBLE_ROWS}
       renderOptions={{ showSubItems: true, hideZeroCostSubs: false }}
       footer={
         <tfoot>

@@ -600,13 +600,13 @@ body {
 
 .pdf-export .invoice-hierarchy-table-wrap,
 .pdf-export .invoice-description-table-wrap {
-  border: 1px solid #6b7280 !important;
+  border: 0.5px solid #6b7280 !important;
   overflow: visible !important;
 }
 
 .pdf-export .invoice-hierarchy-table th,
 .pdf-export .invoice-hierarchy-table td {
-  border: 1px solid #6b7280 !important;
+  border: 0.5px solid #6b7280 !important;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -614,7 +614,11 @@ body {
 @media print {
   .invoice-hierarchy-table th,
   .invoice-hierarchy-table td {
-    border: 1px solid #000 !important;
+    border: 0.5px solid #000 !important;
+  }
+  .invoice-hierarchy-table-wrap,
+  .invoice-description-table-wrap {
+    border-width: 0.5px !important;
   }
   .invoice-description-empty-cell {
     min-height: 6rem !important;

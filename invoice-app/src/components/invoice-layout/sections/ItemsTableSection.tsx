@@ -1,7 +1,7 @@
 import React from 'react';
 import type { CompanyInfo, Customer, InvoiceItem } from '../../../types';
 import { calculateInvoiceTotals } from '../../../utils/invoiceCalculations';
-import { InvoiceItemsTable } from '../../invoice/InvoiceHierarchyRows';
+import { InvoiceItemsTable, MIN_VISIBLE_ROWS } from '../../invoice/InvoiceHierarchyRows';
 
 interface ItemsTableSectionProps {
   company?: CompanyInfo | null;
@@ -20,6 +20,7 @@ export const ItemsTableSection: React.FC<ItemsTableSectionProps> = ({ items }) =
   return (
     <InvoiceItemsTable
       variant="classic"
+      minVisibleRows={MIN_VISIBLE_ROWS}
       headerVariant="classic"
       items={items}
       renderOptions={{ showSubItems: true, hideZeroCostSubs: false }}
