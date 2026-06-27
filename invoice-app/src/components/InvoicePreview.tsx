@@ -86,7 +86,7 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       }
 
       // Handle both camelCase and PascalCase property names
-      let logoUrl = resolveAssetUrl(userProfile.logoUrl || userProfile.LogoUrl || null) || null;
+      const logoUrl = resolveAssetUrl(userProfile.logoUrl || userProfile.LogoUrl) || undefined;
 
       if (process.env.NODE_ENV === 'development') {
         console.log('Final LogoUrl:', logoUrl);
