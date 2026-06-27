@@ -17,7 +17,9 @@ function StaticInvoiceItems({ items }: StaticInvoiceItemsProps) {
       renderOptions={{ showSubItems: true, hideZeroCostSubs: false }}
       footer={
         <tfoot>
-          <tr className="bg-[#f3f4f6] border-t-2 border-[#1f2937]">
+          <tr className="bg-[#f3f4f6] border-t-2 border-[#1f2937]"
+          style={{ height: 36 }}
+          >
             <td className="border border-[#9ca3af] px-2 py-2" colSpan={2}>
               <span className="font-bold uppercase tracking-wide text-[#1f2937]">Subtotal</span>
             </td>
