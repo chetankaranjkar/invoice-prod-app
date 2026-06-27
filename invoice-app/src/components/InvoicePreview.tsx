@@ -12,7 +12,7 @@ import jsPDF from 'jspdf';
 import { Printer, Download } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDateFormat } from '../hooks/useDateFormat';
-import { shouldShowInvoiceLogo } from '../utils/helpers';
+import { shouldShowInvoiceLogo, resolveAssetUrl } from '../utils/helpers';
 import { InvoiceSmallLogo } from './invoice/InvoiceSmallLogo';
 import { InvoiceSignatureImage } from './invoice/InvoiceSignatureImage';
 import { calculateInvoiceTotals, normalizeInvoiceItemsForRender } from '../utils/invoiceCalculations';
@@ -86,54 +86,10 @@ export const InvoicePreview: React.FC<InvoicePreviewProps> = ({
       }
 
       // Handle both camelCase and PascalCase property names
-      let logoUrl = userProfile.logoUrl || userProfile.LogoUrl || null;
+      let logoUrl = resolveAssetUrl(userProfile.logoUrl || userProfile.LogoUrl || null) || null;
 
-      // Process logoUrl to ensure it works in both development and Docker
-      if (logoUrl && logoUrl.trim() !== '') {
-        // Fix old HTTPS URLs to use HTTP (for development)
-        if (logoUrl.includes('https://localhost:7001')) {
-          logoUrl = logoUrl.replace('https://localhost:7001', 'http://localhost:5001');
-        }
-        // Also fix any other HTTPS localhost URLs
-        if (logoUrl.includes('https://localhost')) {
-          logoUrl = logoUrl.replace('https://localhost', 'http://localhost:5001');
-        }
-
-        // Handle relative paths
-        if (!logoUrl.startsWith('http://') && !logoUrl.startsWith('https://') && !logoUrl.startsWith('data:') && !logoUrl.startsWith('blob:')) {
-          const apiBaseUrl = import.meta.env.VITE_API_URL || '';
-          const isDockerMode = apiBaseUrl.startsWith('/'); // Docker mode: VITE_API_URL = "/api/"
-
-          if (logoUrl.startsWith('/uploads/')) {
-            // For /uploads/ paths, always use direct API port (5001) instead of nginx proxy
-            // This works in both Docker and dev mode
-            // Docker: http://localhost:5001/uploads/... (direct API access)
-            // Dev: http://localhost:5001/uploads/... (direct API access)
-            const directApiUrl = 'http://localhost:5001';
-            logoUrl = `${directApiUrl}${logoUrl}`;
-          } else if (logoUrl.startsWith('/')) {
-            // Other relative paths - prepend API URL
-            const baseUrl = apiBaseUrl || (import.meta.env.DEV ? 'http://localhost:5001' : '');
-            // If Docker mode (relative /api/), use direct port for non-uploads paths too
-            const finalBaseUrl = isDockerMode ? 'http://localhost:5001' : baseUrl;
-            const cleanBaseUrl = finalBaseUrl.endsWith('/') ? finalBaseUrl.slice(0, -1) : finalBaseUrl;
-            logoUrl = `${cleanBaseUrl}${logoUrl}`;
-          } else {
-            // Relative path without leading slash
-            const baseUrl = apiBaseUrl || (import.meta.env.DEV ? 'http://localhost:5001' : '');
-            const finalBaseUrl = isDockerMode ? 'http://localhost:5001' : baseUrl;
-            const cleanBaseUrl = finalBaseUrl.endsWith('/') ? finalBaseUrl : `${finalBaseUrl}/`;
-            logoUrl = `${cleanBaseUrl}${logoUrl}`;
-          }
-        }
-
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Final LogoUrl:', logoUrl);
-        }
-      } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('LogoUrl is empty or null in user profile');
-        }
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Final LogoUrl:', logoUrl);
       }
 
       const companyData: CompanyInfo = {

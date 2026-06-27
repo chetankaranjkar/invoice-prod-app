@@ -128,30 +128,34 @@ export const sellerInfoToCompanyInfo = (s: SellerInfoRaw): CompanyInfo => ({
   taxPractitionerTitle: get(s, 'taxPractitionerTitle', 'TaxPractitionerTitle'),
 });
 
-/** Resolve a stored asset URL (e.g. /uploads/signatures/xyz.png) into a full URL the browser can load.
- *  Mirrors the rules used for logos in InvoicePreview/UserProfileModal so signatures load in dev and Docker. */
+/** Resolve a stored asset URL (e.g. /uploads/signatures/xyz.png) into a URL the browser can load.
+ *
+ *  Environment-aware so logos/signatures load in BOTH setups:
+ *  - Dev: the Vite dev server proxies only `/api`, NOT `/uploads`, so assets must point
+ *    directly at the API origin (http://localhost:5001).
+ *  - Docker / production: nginx serves `/uploads` on the same origin as the app, so a
+ *    relative path is correct (the API container isn't reachable on localhost:5001). */
 export const resolveAssetUrl = (url?: string | null): string => {
   if (!url || !url.trim()) return '';
   let u = url.trim();
 
   if (u.startsWith('data:') || u.startsWith('blob:')) return u;
 
-  // Fix legacy HTTPS localhost URLs
-  if (u.includes('https://localhost:7001')) u = u.replace('https://localhost:7001', 'http://localhost:5001');
-  else if (u.includes('https://localhost')) u = u.replace('https://localhost', 'http://localhost:5001');
+  const isDev = Boolean((import.meta as { env?: { DEV?: boolean } })?.env?.DEV);
+  const devApiOrigin = 'http://localhost:5001';
 
-  if (u.startsWith('http://') || u.startsWith('https://')) return u;
+  // Collapse any stored absolute localhost URL (legacy https://localhost:7001, etc.) down
+  // to its path so we can re-host it correctly for the current environment.
+  const localhostMatch = u.match(/^https?:\/\/localhost(?::\d+)?(\/.*)$/i);
+  if (localhostMatch) {
+    u = localhostMatch[1];
+  } else if (u.startsWith('http://') || u.startsWith('https://')) {
+    // External/absolute host (e.g. cloud storage) — leave untouched.
+    return u;
+  }
 
-  // /uploads/* always served directly by API
-  if (u.startsWith('/uploads/')) return `http://localhost:5001${u}`;
-
-  const apiBaseUrl = (import.meta as { env?: Record<string, string> })?.env?.VITE_API_URL || '';
-  const isDockerMode = apiBaseUrl.startsWith('/');
-  const baseUrl = isDockerMode
-    ? 'http://localhost:5001'
-    : (apiBaseUrl || 'http://localhost:5001');
-  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  return u.startsWith('/') ? `${cleanBase}${u}` : `${cleanBase}/${u}`;
+  const path = u.startsWith('/') ? u : `/${u}`;
+  return isDev ? `${devApiOrigin}${path}` : path;
 };
 
 /** Default: 12px. Use custom only when useDefaultInvoiceFontSizes is explicitly false. */

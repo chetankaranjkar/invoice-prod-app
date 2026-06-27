@@ -3,7 +3,7 @@ import { X, User, Building, Upload, Save, Trash2, Image, FileText, CreditCard, R
 import type { UserProfile, UpdateUserProfileDto } from '../types';
 import { api } from '../services/agent';
 import { useTheme } from '../contexts/ThemeContext';
-import { getApiErrorMessage } from '../utils/helpers';
+import { getApiErrorMessage, resolveAssetUrl } from '../utils/helpers';
 
 type TabId = 'general' | 'tax' | 'bank' | 'invoice' | 'appearance';
 
@@ -79,29 +79,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         includeSignatureOnInvoice: response.data.includeSignatureOnInvoice ?? true,
         includeLogoOnInvoice: response.data.includeLogoOnInvoice ?? true,
       });
-      let logoUrl = response.data.logoUrl || '';
-      if (logoUrl && logoUrl.trim() !== '') {
-        if (logoUrl.startsWith('/uploads/') && !logoUrl.startsWith('http://') && !logoUrl.startsWith('https://')) {
-          logoUrl = `http://localhost:5001${logoUrl}`;
-        } else if (logoUrl.includes('https://localhost:7001')) {
-          logoUrl = logoUrl.replace('https://localhost:7001', 'http://localhost:5001');
-        } else if (logoUrl.includes('https://localhost')) {
-          logoUrl = logoUrl.replace('https://localhost', 'http://localhost:5001');
-        }
-      }
-      setLogoPreview(logoUrl);
-
-      let signatureUrl = response.data.signatureUrl || '';
-      if (signatureUrl && signatureUrl.trim() !== '') {
-        if (signatureUrl.startsWith('/uploads/') && !signatureUrl.startsWith('http://') && !signatureUrl.startsWith('https://')) {
-          signatureUrl = `http://localhost:5001${signatureUrl}`;
-        } else if (signatureUrl.includes('https://localhost:7001')) {
-          signatureUrl = signatureUrl.replace('https://localhost:7001', 'http://localhost:5001');
-        } else if (signatureUrl.includes('https://localhost')) {
-          signatureUrl = signatureUrl.replace('https://localhost', 'http://localhost:5001');
-        }
-      }
-      setSignaturePreview(signatureUrl);
+      setLogoPreview(resolveAssetUrl(response.data.logoUrl));
+      setSignaturePreview(resolveAssetUrl(response.data.signatureUrl));
       setSignatureFile(null);
     } catch (err: any) {
       setError('Failed to load profile');

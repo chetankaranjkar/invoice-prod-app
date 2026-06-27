@@ -9,6 +9,7 @@ import { TotalsSection } from './sections/TotalsSection';
 import { FooterSection } from './sections/FooterSection';
 import { StaticTextSection } from './sections/StaticTextSection';
 import { calculateInvoiceTotals } from '../../utils/invoiceCalculations';
+import { resolveAssetUrl } from '../../utils/helpers';
 
 interface DynamicInvoiceRendererProps {
   layout: InvoiceLayoutConfig;
@@ -63,34 +64,7 @@ const SECTION_COMPONENTS: Record<string, React.FC<SectionRenderProps>> = {
 };
 
 const normalizeLogoUrl = (logoUrl?: string | null): string | null => {
-  if (!logoUrl || logoUrl.trim() === '') return null;
-
-  let finalUrl = logoUrl.trim();
-  if (finalUrl.includes('https://localhost:7001')) {
-    finalUrl = finalUrl.replace('https://localhost:7001', 'http://localhost:5001');
-  }
-  if (finalUrl.includes('https://localhost')) {
-    finalUrl = finalUrl.replace('https://localhost', 'http://localhost:5001');
-  }
-
-  if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://') && !finalUrl.startsWith('data:') && !finalUrl.startsWith('blob:')) {
-    const apiBaseUrl = import.meta.env.VITE_API_URL || '';
-    const isDockerMode = apiBaseUrl.startsWith('/');
-
-    if (finalUrl.startsWith('/uploads/')) {
-      finalUrl = `http://localhost:5001${finalUrl}`;
-    } else if (finalUrl.startsWith('/')) {
-      const baseUrl = apiBaseUrl || (import.meta.env.DEV ? 'http://localhost:5001' : '');
-      const finalBase = isDockerMode ? 'http://localhost:5001' : baseUrl;
-      finalUrl = `${finalBase.replace(/\/$/, '')}${finalUrl}`;
-    } else {
-      const baseUrl = apiBaseUrl || (import.meta.env.DEV ? 'http://localhost:5001' : '');
-      const finalBase = isDockerMode ? 'http://localhost:5001' : baseUrl;
-      finalUrl = `${finalBase.replace(/\/?$/, '/')}${finalUrl}`;
-    }
-  }
-
-  return finalUrl;
+  return resolveAssetUrl(logoUrl) || null;
 };
 
 const computeTotals = (items: InvoiceItem[], initialPayment = 0, waveAmount = 0): TotalsSummary => {
