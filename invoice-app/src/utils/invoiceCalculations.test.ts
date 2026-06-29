@@ -4,6 +4,7 @@ import {
   calculateLineAmounts,
   buildInvoiceHierarchy,
   flattenHierarchyForRender,
+  productToInvoiceLine,
 } from './invoiceCalculations';
 
 describe('invoiceCalculations', () => {
@@ -57,5 +58,25 @@ describe('invoiceCalculations', () => {
     expect(tree).toHaveLength(1);
     expect(tree[0].children).toHaveLength(1);
     expect(tree[0].children![0].productName).toBe('Child');
+  });
+
+  it('productToInvoiceLine uses profile 0% GST instead of product catalog GST', () => {
+    const line = productToInvoiceLine(
+      { id: 1, name: 'Sugar', defaultGstPercentage: 18, defaultRate: 100 },
+      undefined,
+      undefined,
+      0
+    );
+    expect(line.gstPercentage).toBe(0);
+  });
+
+  it('productToInvoiceLine still uses product GST when profile default is not 0', () => {
+    const line = productToInvoiceLine(
+      { id: 1, name: 'Sugar', defaultGstPercentage: 5, defaultRate: 100 },
+      undefined,
+      undefined,
+      18
+    );
+    expect(line.gstPercentage).toBe(5);
   });
 });

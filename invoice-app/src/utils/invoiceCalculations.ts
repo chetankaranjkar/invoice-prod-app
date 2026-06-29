@@ -293,13 +293,16 @@ export function productToInvoiceLine(
     parentProductId?: number | null;
   },
   parentLineKey?: string,
-  parentGst?: number
+  parentGst?: number,
+  profileDefaultGst?: number
 ): InvoiceLineInput {
   const isSub = product.productType === 'sub' || !!parentLineKey;
   const gst =
     isSub && product.inheritGstFromParent && parentGst != null
       ? parentGst
-      : product.defaultGstPercentage ?? parentGst ?? 18;
+      : profileDefaultGst === 0
+        ? 0
+        : product.defaultGstPercentage ?? parentGst ?? profileDefaultGst ?? 18;
 
   return {
     lineKey: createLineKey(),

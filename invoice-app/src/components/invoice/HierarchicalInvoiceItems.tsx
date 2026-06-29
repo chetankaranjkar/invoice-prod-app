@@ -132,7 +132,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
 
   const handleParentProductSelect = async (lineKey: string, product?: Product) => {
     if (!product) return;
-    const parentLine = productToInvoiceLine(product);
+    const parentLine = productToInvoiceLine(product, undefined, undefined, defaultGstPercentage);
     parentLine.lineKey = lineKey;
 
     let next = items.map((i) => (i.lineKey === lineKey ? { ...i, ...parentLine, lineKey } : i));
@@ -142,7 +142,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
       const res = await api.products.getChildren(product.id);
       const children = (res.data || []) as Product[];
       const childLines = children.map((child) =>
-        productToInvoiceLine(child, lineKey, parentLine.gstPercentage)
+        productToInvoiceLine(child, lineKey, parentLine.gstPercentage, defaultGstPercentage)
       );
       next = [
         ...next.filter((i) => i.parentLineKey !== lineKey),
@@ -167,7 +167,7 @@ export const HierarchicalInvoiceItems: React.FC<HierarchicalInvoiceItemsProps> =
             value={child.productName || ''}
             onChange={(name, product) => {
               if (product) {
-                const line = productToInvoiceLine(product, child.parentLineKey, parentGst);
+                const line = productToInvoiceLine(product, child.parentLineKey, parentGst, defaultGstPercentage);
                 line.lineKey = lineKey;
                 const next = items.map((i) => (i.lineKey === lineKey ? { ...i, ...line, lineKey } : i));
                 recalcAll(next);
