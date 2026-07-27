@@ -36,6 +36,8 @@ vitest-results.json
 # User-uploaded signature images (runtime, per-user)
 InvoiceApp.Api/wwwroot/uploads/signatures/
 InvoiceApp.Api/wwwroot/backups/*.zip
+InvoiceApp.Api/wwwroot/backups/**/*.bak
+InvoiceApp.Api/wwwroot/backups/**/*.zip
 
 # Misc
 *.user
