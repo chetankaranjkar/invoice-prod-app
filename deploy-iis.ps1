@@ -314,6 +314,10 @@ function Update-ApiWebConfig {
     $aspNetCore = $systemWebServer.SelectSingleNode("*[local-name()='aspNetCore']")
     if ($aspNetCore) {
         $aspNetCore.SetAttribute("requestTimeout", "00:10:00")
+        $aspNetCore.SetAttribute("startupTimeLimit", "300")
+        $aspNetCore.SetAttribute("stdoutLogEnabled", "true")
+        $aspNetCore.SetAttribute("stdoutLogFile", ".\logs\stdout")
+        $aspNetCore.SetAttribute("processesPerApplication", "1")
 
         $envVars = $aspNetCore.SelectSingleNode("*[local-name()='environmentVariables']")
         if (-not $envVars) {
