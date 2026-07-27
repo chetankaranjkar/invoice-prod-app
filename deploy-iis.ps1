@@ -86,17 +86,27 @@ function Stop-IfExists {
 
     Import-Module WebAdministration -ErrorAction Stop
 
-    if (Get-Website -Name $SiteName -ErrorAction SilentlyContinue) {
-        Write-Host "  Stopping site: $SiteName"
-        Stop-Website -Name $SiteName -ErrorAction SilentlyContinue
-        Remove-Website -Name $SiteName
+    try {
+        if (Get-Website -Name $SiteName -ErrorAction SilentlyContinue) {
+            Write-Host "  Stopping site: $SiteName"
+            try { Stop-Website -Name $SiteName -ErrorAction Stop } catch { }
+            Remove-Website -Name $SiteName -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-Warn "Could not remove site ${SiteName}: $($_.Exception.Message)"
     }
 
-    if (Test-Path "IIS:\AppPools\$AppPoolName") {
-        Write-Host "  Removing app pool: $AppPoolName"
-        Stop-WebAppPool -Name $AppPoolName -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
-        Remove-WebAppPool -Name $AppPoolName -ErrorAction SilentlyContinue
+    try {
+        if (Test-Path "IIS:\AppPools\$AppPoolName") {
+            Write-Host "  Removing app pool: $AppPoolName"
+            try { Stop-WebAppPool -Name $AppPoolName -ErrorAction Stop } catch { }
+            Start-Sleep -Seconds 1
+            Remove-WebAppPool -Name $AppPoolName -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-Warn "Could not remove app pool ${AppPoolName}: $($_.Exception.Message)"
     }
 }
 
@@ -105,16 +115,35 @@ function Stop-IisSitesForPublish {
     if (-not (Get-Module WebAdministration)) { return }
 
     foreach ($site in @($ApiSiteName, $WebSiteName)) {
-        if (Get-Website -Name $site -ErrorAction SilentlyContinue) {
-            Write-Host "  Stopping site: $site"
-            Stop-Website -Name $site -ErrorAction SilentlyContinue
+        try {
+            $website = Get-Website -Name $site -ErrorAction SilentlyContinue
+            if ($website -and $website.State -ne "Stopped") {
+                Write-Host "  Stopping site: $site"
+                Stop-Website -Name $site -ErrorAction Stop
+            }
+            elseif ($website) {
+                Write-Host "  Site already stopped: $site"
+            }
+        }
+        catch {
+            Write-Warn "Could not stop site ${site}: $($_.Exception.Message)"
         }
     }
 
     foreach ($pool in @($ApiAppPool, $WebAppPool)) {
-        if (Test-Path "IIS:\AppPools\$pool") {
-            Write-Host "  Stopping app pool: $pool"
-            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+        try {
+            if (-not (Test-Path "IIS:\AppPools\$pool")) { continue }
+            $state = (Get-WebAppPoolState -Name $pool).Value
+            if ($state -ne "Stopped") {
+                Write-Host "  Stopping app pool: $pool"
+                Stop-WebAppPool -Name $pool -ErrorAction Stop
+            }
+            else {
+                Write-Host "  App pool already stopped: $pool"
+            }
+        }
+        catch {
+            Write-Warn "Could not stop app pool ${pool}: $($_.Exception.Message)"
         }
     }
 
