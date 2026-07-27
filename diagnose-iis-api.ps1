@@ -78,45 +78,81 @@ if (-not $SqlServer) { $SqlServer = ".\SQLEXPRESS" }
 Write-Host "  Using SQL Server instance: $SqlServer" -ForegroundColor Gray
 
 Write-Step "Checking SQL Server service..."
-$sqlServices = Get-Service -Name "MSSQL*" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Status -eq "Running" }
+$sqlServices = Get-Service -Name "MSSQL*" -ErrorAction SilentlyContinue
 if ($sqlServices) {
     foreach ($svc in $sqlServices) {
-        Write-Ok "Running: $($svc.Name)"
+        $color = if ($svc.Status -eq "Running") { "Green" } else { "Red" }
+        Write-Host "  $($svc.Name): $($svc.Status)" -ForegroundColor $color
     }
 }
 else {
-    Write-Err "No running SQL Server service found (MSSQL*)"
+    Write-Err "No SQL Server services found. Install SQL Server Express first."
+    Write-Host "  Run: .\install-iis-prerequisites.ps1 -IncludeSqlServer" -ForegroundColor Gray
+}
+
+Write-Step "Detecting SQL Server instances..."
+$instanceKey = "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+$detectedServers = @()
+if (Test-Path $instanceKey) {
+    $props = Get-ItemProperty $instanceKey
+    foreach ($prop in $props.PSObject.Properties) {
+        if ($prop.Name -in @("PSPath", "PSParentPath", "PSChildName", "PSDrive", "PSProvider")) { continue }
+        if ($prop.Name -eq "MSSQLSERVER") {
+            $detectedServers += ".", "localhost"
+        }
+        else {
+            $detectedServers += ".\$($prop.Name)", "localhost\$($prop.Name)"
+        }
+    }
+    Write-Ok "Detected instances: $($detectedServers -join ', ')"
+}
+else {
+    Write-Warn "No SQL instances found in registry"
+    $detectedServers = @(".", ".\SQLEXPRESS", "localhost\SQLEXPRESS")
 }
 
 Write-Step "Testing SQL connection (Windows auth)..."
 $sqlcmd = Get-Command sqlcmd -ErrorAction SilentlyContinue
+if (-not $sqlcmd) {
+    $sqlcmdPath = @(
+        "${env:ProgramFiles}\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\SQLCMD.EXE",
+        "${env:ProgramFiles}\Microsoft SQL Server\160\Tools\Binn\SQLCMD.EXE"
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($sqlcmdPath) { $sqlcmd = Get-Item $sqlcmdPath }
+}
+
+$connectedServer = $null
 if ($sqlcmd) {
-    & sqlcmd -S $SqlServer -E -Q "SELECT @@VERSION" -h -1 -W 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "sqlcmd connected to $SqlServer"
+    $serversToTry = @($SqlServer) + $detectedServers | Where-Object { $_ } | Select-Object -Unique
+    foreach ($server in $serversToTry) {
+        & $sqlcmd.Source -S $server -E -Q "SELECT 1" -h -1 -W 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $connectedServer = $server
+            Write-Ok "sqlcmd connected to $server"
+            $SqlServer = $server
+            break
+        }
     }
-    else {
-        Write-Err "sqlcmd failed for $SqlServer. Try: .\SQLEXPRESS or ."
+    if (-not $connectedServer) {
+        Write-Err "sqlcmd could not connect to any SQL instance."
+        Write-Host "  Run: .\fix-iis-sql.bat" -ForegroundColor Yellow
     }
 }
 else {
-    Write-Warn "sqlcmd not in PATH - install SSMS or SQL tools"
+    Write-Warn "sqlcmd not found - install SSMS"
 }
 
 Write-Step "Checking app pool SQL login..."
-if ($sqlcmd) {
+if ($sqlcmd -and $connectedServer) {
     $loginCheck = "SELECT name FROM sys.server_principals WHERE name = N'$PoolIdentity'"
-    $result = & sqlcmd -S $SqlServer -E -Q $loginCheck -h -1 -W 2>&1
+    $result = & $sqlcmd.Source -S $connectedServer -E -Q $loginCheck -h -1 -W 2>&1
     if ($result -match [regex]::Escape($ApiAppPool)) {
         Write-Ok "SQL login exists: $PoolIdentity"
     }
     else {
         Write-Err "SQL login missing: $PoolIdentity"
         Write-Host ""
-        Write-Host "Run in SSMS:" -ForegroundColor Yellow
-        Write-Host "  CREATE LOGIN [$PoolIdentity] FROM WINDOWS;" -ForegroundColor White
-        Write-Host "  ALTER SERVER ROLE dbcreator ADD MEMBER [$PoolIdentity];" -ForegroundColor White
+        Write-Host "  Run: .\fix-iis-sql.bat" -ForegroundColor Yellow
     }
 }
 
@@ -188,7 +224,9 @@ Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host " Common fixes for 500.30" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "1. Redeploy with correct SQL instance:" -ForegroundColor White
+Write-Host "1. Fix SQL automatically:" -ForegroundColor White
+Write-Host "   .\fix-iis-sql.bat" -ForegroundColor Gray
+Write-Host "2. Redeploy with detected SQL instance:" -ForegroundColor White
 Write-Host "   .\deploy-iis.ps1 -SqlServer '.\SQLEXPRESS' -SkipBuild" -ForegroundColor Gray
 Write-Host "2. Create SQL login for app pool (see above)" -ForegroundColor White
 Write-Host "3. Recycle app pool:" -ForegroundColor White
