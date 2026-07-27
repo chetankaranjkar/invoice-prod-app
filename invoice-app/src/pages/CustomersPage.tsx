@@ -20,7 +20,7 @@ import { AddPaymentModal } from '../components/AddPaymentModal';
 import { UpdateInvoiceDateModal, UpdateInvoiceDateButton } from '../components/UpdateInvoiceDateModal';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
-import { buildHtml2CanvasOnClone } from '../utils/pdfCapture';
+import { buildHtml2CanvasOnClone, convertClonedImagesToDataUrls } from '../utils/pdfCapture';
 import jsPDF from 'jspdf';
 
 interface CustomersPageProps {
@@ -271,12 +271,57 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
     previewEl.classList.add('pdf-export');
 
     try {
-      const canvas = await html2canvas(previewEl, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        onclone: buildHtml2CanvasOnClone(previewEl),
+      const images = Array.from(previewEl.querySelectorAll('img'));
+      await Promise.all(
+        images.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete && img.naturalWidth > 0) {
+                resolve();
+                return;
+              }
+              const done = () => resolve();
+              img.addEventListener('load', done, { once: true });
+              img.addEventListener('error', done, { once: true });
+              setTimeout(done, 8000);
+            })
+        )
+      );
+
+      const onclone = buildHtml2CanvasOnClone(previewEl, async (clonedDoc, element) => {
+        const pdfRoot = element.querySelector('[data-pdf-root="true"]') as HTMLElement | null;
+        const fontTarget = pdfRoot ?? element;
+        fontTarget.style.fontSize = '1.15em';
+        fontTarget.style.lineHeight = '1.3';
+        await convertClonedImagesToDataUrls(previewEl, clonedDoc);
       });
+
+      let canvas: HTMLCanvasElement;
+      try {
+        canvas = await html2canvas(previewEl, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: false,
+          backgroundColor: '#ffffff',
+          windowWidth: previewEl.scrollWidth,
+          windowHeight: previewEl.scrollHeight,
+          onclone,
+        });
+      } catch {
+        canvas = await html2canvas(previewEl, {
+          scale: 2,
+          useCORS: false,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          windowWidth: previewEl.scrollWidth,
+          windowHeight: previewEl.scrollHeight,
+          onclone,
+        });
+      }
+
+      if (!canvas.width || !canvas.height) {
+        throw new Error('PDF capture produced an empty image. Try again after the invoice fully loads.');
+      }
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -298,7 +343,11 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       const xOffset = margin + (contentWidth - finalWidth) / 2;
       pdf.addImage(imgData, 'PNG', xOffset, margin, finalWidth, finalHeight);
 
-      const fileName = `Invoice_${selectedInvoice?.invoiceNumber || 'preview'}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const safeInvoiceNo = (selectedInvoice?.invoiceNumber || 'preview')
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const fileName = `Invoice_${safeInvoiceNo}_${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (error: any) {
       alert(`Failed to generate PDF: ${error?.message || 'Unknown error'}`);
