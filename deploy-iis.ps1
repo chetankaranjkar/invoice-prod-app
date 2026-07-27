@@ -344,28 +344,21 @@ function Update-ApiWebConfig {
 function New-FrontendWebConfig {
     param([string]$Path, [int]$BackendPort)
 
+    # Do not use serverVariables here - they require machine-level unlock and cause HTTP 500.52.
+    # ARR preserveHostHeader=false rewrites the Host header to match the backend URL (127.0.0.1).
     $content = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
   <system.webServer>
     <rewrite>
-      <allowedServerVariables>
-        <add name="HTTP_HOST" />
-      </allowedServerVariables>
       <rules>
         <rule name="API Proxy" stopProcessing="true">
           <match url="^api/(.*)" />
           <action type="Rewrite" url="http://127.0.0.1:$BackendPort/api/{R:1}" />
-          <serverVariables>
-            <set name="HTTP_HOST" value="127.0.0.1" />
-          </serverVariables>
         </rule>
         <rule name="Uploads Proxy" stopProcessing="true">
           <match url="^uploads/(.*)" />
           <action type="Rewrite" url="http://127.0.0.1:$BackendPort/uploads/{R:1}" />
-          <serverVariables>
-            <set name="HTTP_HOST" value="127.0.0.1" />
-          </serverVariables>
         </rule>
         <rule name="SPA Fallback" stopProcessing="true">
           <match url=".*" />
@@ -523,7 +516,6 @@ Write-Ok "Prerequisites look good"
 # Enable ARR reverse proxy
 Write-Step "Enabling IIS reverse proxy (ARR)..."
 if (Enable-ArrProxySettings) {
-    Enable-RewriteServerVariable -Name "HTTP_HOST"
     Write-Ok "ARR proxy enabled (preserveHostHeader=false)"
 }
 else {
