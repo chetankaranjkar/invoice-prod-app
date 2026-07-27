@@ -272,6 +272,110 @@ function Get-SqlCmdPath {
     return $null
 }
 
+function Get-LanIPv4Address {
+    # Get-NetIPAddress can fail on some PCs ("Invalid class") — never block deploy.
+    try {
+        $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } |
+            Select-Object -First 1 -ExpandProperty IPAddress
+        if ($ip) { return $ip }
+    }
+    catch { }
+
+    try {
+        $entry = [System.Net.Dns]::GetHostEntry([System.Net.Dns]::GetHostName())
+        $ip = $entry.AddressList |
+            Where-Object { $_.AddressFamily -eq 'InterNetwork' -and $_.ToString() -notlike '127.*' } |
+            Select-Object -First 1
+        if ($ip) { return $ip.ToString() }
+    }
+    catch { }
+
+    return $null
+}
+
+function Ensure-IisServicesRunning {
+    foreach ($name in @("WAS", "W3SVC")) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if (-not $svc) {
+            Write-Warn "Windows service not found: $name"
+            continue
+        }
+        if ($svc.Status -ne "Running") {
+            Write-Host "  Starting service: $name"
+            try {
+                Start-Service -Name $name -ErrorAction Stop
+            }
+            catch {
+                Write-Warn "Could not start ${name}: $($_.Exception.Message)"
+            }
+        }
+    }
+    Start-Sleep -Seconds 2
+}
+
+function Start-IisAppPoolSafe {
+    param([string]$AppPoolName)
+
+    try {
+        if (-not (Test-Path "IIS:\AppPools\$AppPoolName")) { return }
+        $state = (Get-WebAppPoolState -Name $AppPoolName).Value
+        if ($state -eq "Started") { return }
+        Start-WebAppPool -Name $AppPoolName -ErrorAction Stop
+    }
+    catch {
+        Write-Warn "Start-WebAppPool ${AppPoolName}: $($_.Exception.Message)"
+        Ensure-IisServicesRunning
+        try { Start-WebAppPool -Name $AppPoolName -ErrorAction SilentlyContinue } catch { }
+    }
+}
+
+function Start-IisSiteSafe {
+    param([string]$SiteName)
+
+    $maxAttempts = 5
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            $site = Get-Website -Name $SiteName -ErrorAction SilentlyContinue
+            if (-not $site) {
+                throw "Site '$SiteName' does not exist"
+            }
+            if ($site.State -eq "Started") {
+                Write-Host "  Site already started: $SiteName"
+                return
+            }
+
+            Start-Website -Name $SiteName -ErrorAction Stop
+            Write-Host "  Started site: $SiteName"
+            return
+        }
+        catch {
+            Write-Warn "Start-Website $SiteName attempt $attempt/$maxAttempts failed: $($_.Exception.Message)"
+            Ensure-IisServicesRunning
+            if ($attempt -eq 3) {
+                Write-Host "  Running iisreset..."
+                try { & iisreset /noforce 2>$null | Out-Null } catch { }
+                Start-Sleep -Seconds 3
+            }
+            else {
+                Start-Sleep -Seconds (2 * $attempt)
+            }
+        }
+    }
+
+    $appcmd = Join-Path $env:SystemRoot "System32\inetsrv\appcmd.exe"
+    if (Test-Path $appcmd) {
+        Write-Host "  Trying appcmd start site $SiteName..."
+        & $appcmd start site /site.name:"$SiteName" | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "Started site via appcmd: $SiteName"
+            return
+        }
+    }
+
+    throw "Could not start IIS site '$SiteName'. Check that W3SVC is running (services.msc)."
+}
+
 function Invoke-SqlNonQuery {
     param(
         [string]$Server,
@@ -665,16 +769,9 @@ $corsOrigins = @(
     "http://$computerName"
 )
 
-try {
-    $ip = (Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } |
-        Select-Object -First 1 -ExpandProperty IPAddress)
-    if ($ip) {
-        $corsOrigins += "http://$ip"
-    }
-}
-catch {
-    # Non-fatal
+$lanIp = Get-LanIPv4Address
+if ($lanIp) {
+    $corsOrigins += "http://$lanIp"
 }
 
 if ($AddLocalDomain) {
@@ -693,6 +790,8 @@ Write-Ok "Configuration files written"
 # IIS sites (create pools first so app pool identity exists for ACL/SQL)
 Write-Step "Creating IIS application pools and websites..."
 
+Ensure-IisServicesRunning
+
 Stop-IfExists -SiteName $ApiSiteName -AppPoolName $ApiAppPool
 Stop-IfExists -SiteName $WebSiteName -AppPoolName $WebAppPool
 
@@ -708,8 +807,8 @@ Set-ApiSiteLocalhostBinding -SiteName $ApiSiteName -Port $ApiPort
 
 New-Website -Name $WebSiteName -PhysicalPath $WebDeployPath -ApplicationPool $WebAppPool -Port $WebPort | Out-Null
 
-Start-WebAppPool -Name $ApiAppPool
-Start-WebAppPool -Name $WebAppPool
+Start-IisAppPoolSafe -AppPoolName $ApiAppPool
+Start-IisAppPoolSafe -AppPoolName $WebAppPool
 Start-Sleep -Seconds 2
 
 Write-Ok "IIS sites created"
@@ -765,8 +864,12 @@ if (Invoke-SqlNonQuery -Server $SqlServer -Query $sqlSetup) {
     Write-Ok "SQL permissions configured (API will create DB on first start if missing)"
 }
 
-Start-Website -Name $ApiSiteName
-Start-Website -Name $WebSiteName
+Write-Step "Starting IIS sites..."
+Ensure-IisServicesRunning
+Start-IisAppPoolSafe -AppPoolName $ApiAppPool
+Start-IisAppPoolSafe -AppPoolName $WebAppPool
+Start-IisSiteSafe -SiteName $ApiSiteName
+Start-IisSiteSafe -SiteName $WebSiteName
 
 Write-Ok "IIS sites started"
 
