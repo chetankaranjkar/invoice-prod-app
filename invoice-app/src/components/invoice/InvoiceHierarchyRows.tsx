@@ -180,26 +180,24 @@ export const InvoiceHierarchyRows: React.FC<InvoiceHierarchyRowsProps> = ({
               {serialNumber ?? ''}
             </td>
             <td className={`${styles.cellBorder} px-2 py-2 align-top`}>
-              <div className="flex items-start gap-0.5">
+              <div className={isSub ? 'pl-3' : undefined}>
                 {isSub && (
-                  <span className={`${styles.tree} shrink-0`} aria-hidden>
+                  <span className={`${styles.tree} mr-0.5`} aria-hidden>
                     {treePrefix}
                   </span>
                 )}
-                <div className="min-w-0 flex-1">
-                  <div className={isSub ? styles.subDesc : styles.parentDesc}>
-                    {item.productName}
-                  </div>
-                  {showDetails && (
-                    <div className="text-[9px] text-[#6b7280] mt-0.5 leading-tight">
-                      Qty: {quantity} &middot; Rate: ₹{rate.toFixed(2)}
-                      {gstPercentage > 0 && ` · GST: ${gstPercentage}%`}
-                    </div>
-                  )}
-                  {isSub && item.affectTotal === false && (
-                    <div className="text-[9px] text-[#9ca3af] mt-0.5">Other services</div>
-                  )}
+                <div className={isSub ? styles.subDesc : styles.parentDesc}>
+                  {item.productName}
                 </div>
+                {showDetails && (
+                  <div className="text-[9px] text-[#6b7280] mt-0.5 leading-tight">
+                    Qty: {quantity} &middot; Rate: ₹{rate.toFixed(2)}
+                    {gstPercentage > 0 && ` · GST: ${gstPercentage}%`}
+                  </div>
+                )}
+                {isSub && item.affectTotal === false && (
+                  <div className="text-[9px] text-[#9ca3af] mt-0.5">Other services</div>
+                )}
               </div>
             </td>
             <td

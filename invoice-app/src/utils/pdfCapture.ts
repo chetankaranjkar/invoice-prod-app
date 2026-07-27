@@ -113,6 +113,29 @@ export const PDF_SAFE_INVOICE_CSS = `
 .pdf-export {
   background-color: #ffffff !important;
   color: #0f172a !important;
+  /* Hostania often 404s on IIS; missing fonts + flex cause html2canvas to drop word spaces */
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}
+.pdf-export,
+.pdf-export * {
+  font-family: Arial, Helvetica, "Segoe UI", sans-serif !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}
+/* html2canvas drops spaces inside display:flex text; use block flow for PDF clone */
+.pdf-export .flex {
+  display: block !important;
+}
+.pdf-export .flex.items-start,
+.pdf-export .flex.items-center {
+  display: block !important;
+}
+.pdf-export .min-w-0.flex-1 {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
 }
 .pdf-export .bg-\\[\\#d1d5dc\\],
 .pdf-export .bg-\\[\\#d1d5dc\\] {
@@ -164,6 +187,22 @@ export const PDF_SAFE_INVOICE_CSS = `
 }
 `;
 
+/** Replace regular spaces with NBSP so html2canvas cannot collapse them in flex layouts. */
+export function preserveSpacesInClone(root: HTMLElement): void {
+  const walker = root.ownerDocument!.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode as Text);
+  }
+
+  for (const node of textNodes) {
+    const value = node.nodeValue;
+    if (!value || !value.includes(' ')) continue;
+    // Keep intentional multi-space / newlines; only harden single spaces between words
+    node.nodeValue = value.replace(/ /g, '\u00A0');
+  }
+}
+
 export function sanitizeClonedDocumentForHtml2Canvas(
   clonedDoc: Document,
   sourceRoot: HTMLElement,
@@ -192,6 +231,16 @@ export function sanitizeClonedDocumentForHtml2Canvas(
 
   sanitizeInlineStyles(cloneRoot);
   inlineComputedColors(sourceRoot, cloneRoot);
+
+  // Override any computed Hostania / tracking-* letter-spacing from the live DOM
+  const all = [cloneRoot, ...Array.from(cloneRoot.querySelectorAll('*'))] as HTMLElement[];
+  for (const el of all) {
+    el.style.fontFamily = 'Arial, Helvetica, "Segoe UI", sans-serif';
+    el.style.letterSpacing = 'normal';
+    el.style.wordSpacing = 'normal';
+  }
+
+  preserveSpacesInClone(cloneRoot);
 }
 
 export type Html2CanvasOnClone = (

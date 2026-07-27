@@ -335,13 +335,31 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({ filter = 'all' }) 
       let finalWidth = contentWidth;
       let finalHeight = contentWidth / ratio;
 
-      // If still too tall to fit one page, scale down to fit
-      if (finalHeight > contentHeight) {
-        finalHeight = contentHeight;
-        finalWidth = contentHeight * ratio;
+      if (finalHeight <= contentHeight) {
+        const xOffset = margin + (contentWidth - finalWidth) / 2;
+        pdf.addImage(imgData, 'PNG', xOffset, margin, finalWidth, finalHeight);
+      } else {
+        // Multi-page instead of shrinking (shrinking cut off bank details / footer on IIS)
+        const totalPages = Math.ceil(finalHeight / contentHeight);
+        const imgHeightPerPage = canvas.height / totalPages;
+        const pdfHeightPerPage = finalHeight / totalPages;
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage();
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = canvas.width;
+          pageCanvas.height = imgHeightPerPage;
+          const ctx = pageCanvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(
+              canvas,
+              0, i * imgHeightPerPage, canvas.width, imgHeightPerPage,
+              0, 0, canvas.width, imgHeightPerPage
+            );
+            const pageImg = pageCanvas.toDataURL('image/png');
+            pdf.addImage(pageImg, 'PNG', margin, margin, finalWidth, pdfHeightPerPage);
+          }
+        }
       }
-      const xOffset = margin + (contentWidth - finalWidth) / 2;
-      pdf.addImage(imgData, 'PNG', xOffset, margin, finalWidth, finalHeight);
 
       const safeInvoiceNo = (selectedInvoice?.invoiceNumber || 'preview')
         .replace(/[\\/:*?"<>|]+/g, '-')
