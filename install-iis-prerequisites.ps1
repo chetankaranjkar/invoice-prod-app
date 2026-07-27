@@ -50,6 +50,9 @@ $UrlRewriteUrls = @(
 $ArrUrls = @(
     "https://download.microsoft.com/download/E/9/8/E9849D6A-020E-47E4-9FD0-A023E99B54EB/requestRouter_amd64.msi"
 )
+$HostingBundleUrls = @(
+    "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/8.0.29/dotnet-hosting-8.0.29-win.exe"
+)
 
 function Write-Step([string]$Message) {
     Write-Host ""
@@ -87,7 +90,26 @@ function Test-IisEnabled {
 }
 
 function Test-HostingBundleInstalled {
-    return Test-Path "$env:SystemRoot\System32\inetsrv\aspnetcorev2.dll"
+    if (Test-Path "$env:SystemRoot\System32\inetsrv\aspnetcorev2.dll") {
+        return $true
+    }
+
+    if (-not (Test-CommandAvailable "Get-WebGlobalModule")) {
+        Import-Module WebAdministration -ErrorAction SilentlyContinue
+    }
+
+    if (Test-CommandAvailable "Get-WebGlobalModule") {
+        return [bool](Get-WebGlobalModule -Name "AspNetCoreModuleV2" -ErrorAction SilentlyContinue)
+    }
+
+    return $false
+}
+
+function Test-AspNetCore8RuntimeInstalled {
+    $runtimeRoot = "${env:ProgramFiles}\dotnet\shared\Microsoft.AspNetCore.App"
+    if (-not (Test-Path $runtimeRoot)) { return $false }
+    return [bool](Get-ChildItem $runtimeRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^8\.' })
 }
 
 function Test-UrlRewriteInstalled {
@@ -258,6 +280,95 @@ function Install-IisExtension {
     return $false
 }
 
+function Install-HostingBundle {
+    if (Test-HostingBundleInstalled) {
+        Write-Ok ".NET 8 Hosting Bundle already installed"
+        return $true
+    }
+
+    if (-not (Test-IisEnabled)) {
+        Enable-IisFeatures
+    }
+
+    $runtimeOnly = Test-AspNetCore8RuntimeInstalled
+    if ($runtimeOnly) {
+        Write-Warn ".NET 8 runtime is installed but IIS module is missing."
+        Write-Warn "Reinstalling Hosting Bundle to register AspNetCoreModuleV2 with IIS..."
+    }
+
+    Write-Step "Installing .NET 8 Hosting Bundle..."
+
+    if (Test-WingetAvailable) {
+        Write-Host "  Installing via winget (Microsoft.DotNet.HostingBundle.8)..."
+        & winget install --id "Microsoft.DotNet.HostingBundle.8" --source winget `
+            --accept-package-agreements --accept-source-agreements --disable-interactivity --force
+        Start-Sleep -Seconds 5
+        try { & iisreset | Out-Null } catch { }
+        if (Test-HostingBundleInstalled) {
+            Write-Ok ".NET 8 Hosting Bundle installed via winget"
+            return $true
+        }
+    }
+
+    if (-not (Test-Path $SetupDir)) {
+        New-Item -ItemType Directory -Path $SetupDir -Force | Out-Null
+    }
+
+    $exePath = Join-Path $SetupDir "dotnet-hosting-8.0.29-win.exe"
+    $downloaded = $false
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+    foreach ($url in $HostingBundleUrls) {
+        try {
+            Write-Host "  Downloading Hosting Bundle..."
+            Write-Host "    $url"
+            Invoke-WebRequest -Uri $url -OutFile $exePath -UseBasicParsing -TimeoutSec 600 `
+                -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) InvoiceAppSetup"
+            if ((Test-Path $exePath) -and (Get-Item $exePath).Length -gt 1000000) {
+                $downloaded = $true
+                break
+            }
+            Remove-Item $exePath -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Warn "Download failed: $($_.Exception.Message)"
+            if (Test-Path $exePath) {
+                Remove-Item $exePath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    if ($downloaded) {
+        Write-Host "  Running Hosting Bundle installer (this may take a few minutes)..."
+        $process = Start-Process -FilePath $exePath -ArgumentList "/install", "/quiet", "/norestart" `
+            -Wait -PassThru -NoNewWindow
+        if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010 -and $process.ExitCode -ne 1641) {
+            Write-Warn "Hosting Bundle installer exit code: $($process.ExitCode)"
+        }
+        else {
+            Write-Ok "Hosting Bundle installer completed"
+        }
+
+        Start-Sleep -Seconds 3
+        try { & iisreset | Out-Null } catch { }
+    }
+    else {
+        Write-Warn "Could not download Hosting Bundle automatically."
+    }
+
+    if (Test-HostingBundleInstalled) {
+        Write-Ok ".NET 8 Hosting Bundle is ready for IIS"
+        return $true
+    }
+
+    Write-Warn "Hosting Bundle still missing. Install manually:"
+    Write-Warn "  1. Enable IIS first (Windows Features)"
+    Write-Warn "  2. Download: https://dotnet.microsoft.com/download/dotnet/8.0"
+    Write-Warn "  3. Under 'Run apps', click 'Hosting Bundle' (x64)"
+    Write-Warn "  4. Run installer, then: iisreset"
+    return $false
+}
+
 function Enable-IisFeatures {
   Write-Step "Enabling IIS Windows features..."
 
@@ -356,18 +467,8 @@ else {
     Write-Ok "IIS already enabled"
 }
 
-# .NET 8 Hosting Bundle (required)
-if (-not (Test-HostingBundleInstalled)) {
-    Write-Step "Installing .NET 8 Hosting Bundle..."
-    $installed = Install-WingetPackage -Id "Microsoft.DotNet.HostingBundle.8" -Label ".NET 8 Hosting Bundle"
-    if (-not $installed) {
-        Write-Warn "Open in browser: https://dotnet.microsoft.com/download/dotnet/8.0"
-        Write-Warn "Download and install the 'Hosting Bundle' (not just Runtime)."
-    }
-}
-else {
-    Write-Ok ".NET 8 Hosting Bundle already installed"
-}
+# .NET 8 Hosting Bundle (required) - must be installed AFTER IIS is enabled
+Install-HostingBundle | Out-Null
 
 # URL Rewrite
 Install-IisExtension `

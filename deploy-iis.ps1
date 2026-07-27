@@ -380,11 +380,16 @@ if (-not (Get-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole -Err
     $missing += "IIS is not enabled. Re-run with -InstallIisFeatures or enable IIS in Windows Features."
 }
 
-if (-not (Test-Path "$env:SystemRoot\System32\inetsrv\aspnetcorev2.dll")) {
-    $missing += ".NET 8 Hosting Bundle: https://dotnet.microsoft.com/download/dotnet/8.0 (Hosting Bundle)"
+Import-Module WebAdministration -ErrorAction SilentlyContinue
+
+if (-not (Test-Path "$env:SystemRoot\System32\inetsrv\aspnetcorev2.dll") -and
+    -not (Get-WebGlobalModule -Name "AspNetCoreModuleV2" -ErrorAction SilentlyContinue)) {
+    $missing += ".NET 8 Hosting Bundle missing for IIS. Run: .\install-iis-prerequisites.ps1 (or install Hosting Bundle from https://dotnet.microsoft.com/download/dotnet/8.0 then iisreset)"
 }
 
-Import-Module WebAdministration -ErrorAction Stop
+if (-not (Get-Module WebAdministration)) {
+    Import-Module WebAdministration -ErrorAction Stop
+}
 
 if (-not (Get-WebGlobalModule -Name "RewriteModule" -ErrorAction SilentlyContinue)) {
     $missing += "IIS URL Rewrite: https://www.iis.net/downloads/microsoft/url-rewrite"
