@@ -100,6 +100,54 @@ function Stop-IfExists {
     }
 }
 
+function Stop-IisSitesForPublish {
+    Import-Module WebAdministration -ErrorAction SilentlyContinue
+    if (-not (Get-Module WebAdministration)) { return }
+
+    foreach ($site in @($ApiSiteName, $WebSiteName)) {
+        if (Get-Website -Name $site -ErrorAction SilentlyContinue) {
+            Write-Host "  Stopping site: $site"
+            Stop-Website -Name $site -ErrorAction SilentlyContinue
+        }
+    }
+
+    foreach ($pool in @($ApiAppPool, $WebAppPool)) {
+        if (Test-Path "IIS:\AppPools\$pool") {
+            Write-Host "  Stopping app pool: $pool"
+            Stop-WebAppPool -Name $pool -ErrorAction SilentlyContinue
+        }
+    }
+
+    # Give w3wp.exe time to release locked DLLs
+    Start-Sleep -Seconds 3
+}
+
+function Remove-DeployFolder {
+    param([string]$Path)
+
+    if (-not (Test-Path $Path)) { return }
+
+    $maxAttempts = 8
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+            Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                    try { $_.Attributes = "Normal" } catch { }
+                }
+            Remove-Item $Path -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq $maxAttempts) {
+                throw "Could not remove '$Path' (files locked by IIS). Stop sites/app pools and retry. $($_.Exception.Message)"
+            }
+            Write-Warn "Folder locked (attempt $attempt/$maxAttempts). Stopping IIS workers and retrying..."
+            Stop-IisSitesForPublish
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
+}
+
 function Grant-FolderAcl {
     param(
         [string]$Path,
@@ -524,10 +572,11 @@ else {
 
 # Build & publish
 if (-not $SkipBuild) {
+    Write-Step "Stopping IIS sites/app pools so deploy files can be replaced..."
+    Stop-IisSitesForPublish
+
     Write-Step "Publishing .NET API..."
-    if (Test-Path $ApiDeployPath) {
-        Remove-Item $ApiDeployPath -Recurse -Force
-    }
+    Remove-DeployFolder -Path $ApiDeployPath
     New-Item -ItemType Directory -Path $ApiDeployPath -Force | Out-Null
     & dotnet publish $ApiProject -c Release -o $ApiDeployPath
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
@@ -551,9 +600,7 @@ if (-not $SkipBuild) {
         Pop-Location
     }
 
-    if (Test-Path $WebDeployPath) {
-        Remove-Item $WebDeployPath -Recurse -Force
-    }
+    Remove-DeployFolder -Path $WebDeployPath
     New-Item -ItemType Directory -Path $WebDeployPath -Force | Out-Null
     Copy-Item (Join-Path $WebProject "dist\*") $WebDeployPath -Recurse -Force
     Write-Ok "Frontend built to $WebDeployPath"
