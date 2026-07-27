@@ -65,6 +65,29 @@ function Get-SqlInstanceCandidates {
         [void]$servers.Add($SqlServer)
     }
 
+    # Prefer instances whose Windows service is actually running
+    $svcDefault = Get-Service -Name "MSSQLSERVER" -ErrorAction SilentlyContinue
+    if ($svcDefault -and $svcDefault.Status -eq "Running") {
+        [void]$servers.Add(".")
+        [void]$servers.Add("localhost")
+        [void]$servers.Add("(local)")
+    }
+
+    $svcExpress = Get-Service -Name "MSSQL`$SQLEXPRESS" -ErrorAction SilentlyContinue
+    if ($svcExpress -and $svcExpress.Status -eq "Running") {
+        [void]$servers.Add(".\SQLEXPRESS")
+        [void]$servers.Add("localhost\SQLEXPRESS")
+        [void]$servers.Add("$env:COMPUTERNAME\SQLEXPRESS")
+    }
+
+    Get-Service -Name "MSSQL`$*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Status -eq "Running" -and $_.Name -ne "MSSQL`$SQLEXPRESS" } |
+        ForEach-Object {
+            $name = $_.Name -replace '^MSSQL\$', ''
+            [void]$servers.Add(".\$name")
+            [void]$servers.Add("localhost\$name")
+        }
+
     [void]$servers.Add(".")
     [void]$servers.Add("localhost")
     [void]$servers.Add("(local)")
