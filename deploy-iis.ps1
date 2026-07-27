@@ -120,6 +120,36 @@ function Grant-FolderAcl {
     }
 }
 
+function Enable-ArrProxySettings {
+    Import-Module WebAdministration -ErrorAction SilentlyContinue
+    try {
+        Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "enabled" -Value "True"
+        Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "preserveHostHeader" -Value "False"
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Enable-RewriteServerVariable {
+    param([string]$Name)
+
+    Import-Module WebAdministration -ErrorAction SilentlyContinue
+    $filter = "system.webServer/rewrite/allowedServerVariables"
+    $existing = Get-WebConfiguration -PSPath "MACHINE/WEBROOT/APPHOST" -Filter $filter -ErrorAction SilentlyContinue
+    if ($existing.Collection | Where-Object { $_.name -eq $Name }) {
+        return
+    }
+
+    try {
+        Add-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter $filter -Name "." -Value @{ name = $Name }
+    }
+    catch {
+        Write-Warn "Could not allow rewrite server variable $Name at server level."
+    }
+}
+
 function Set-ApiSiteLocalhostBinding {
     param(
         [string]$SiteName,
@@ -315,14 +345,23 @@ function New-FrontendWebConfig {
 <configuration>
   <system.webServer>
     <rewrite>
+      <allowedServerVariables>
+        <add name="HTTP_HOST" />
+      </allowedServerVariables>
       <rules>
         <rule name="API Proxy" stopProcessing="true">
           <match url="^api/(.*)" />
-          <action type="Rewrite" url="http://localhost:$BackendPort/api/{R:1}" />
+          <action type="Rewrite" url="http://127.0.0.1:$BackendPort/api/{R:1}" />
+          <serverVariables>
+            <set name="HTTP_HOST" value="127.0.0.1" />
+          </serverVariables>
         </rule>
         <rule name="Uploads Proxy" stopProcessing="true">
           <match url="^uploads/(.*)" />
-          <action type="Rewrite" url="http://localhost:$BackendPort/uploads/{R:1}" />
+          <action type="Rewrite" url="http://127.0.0.1:$BackendPort/uploads/{R:1}" />
+          <serverVariables>
+            <set name="HTTP_HOST" value="127.0.0.1" />
+          </serverVariables>
         </rule>
         <rule name="SPA Fallback" stopProcessing="true">
           <match url=".*" />
@@ -479,12 +518,12 @@ Write-Ok "Prerequisites look good"
 
 # Enable ARR reverse proxy
 Write-Step "Enabling IIS reverse proxy (ARR)..."
-try {
-    Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "enabled" -Value "True"
-    Write-Ok "ARR proxy enabled"
+if (Enable-ArrProxySettings) {
+    Enable-RewriteServerVariable -Name "HTTP_HOST"
+    Write-Ok "ARR proxy enabled (preserveHostHeader=false)"
 }
-catch {
-    Write-Warn "Could not enable ARR proxy automatically: $($_.Exception.Message)"
+else {
+    Write-Warn "Could not enable ARR proxy automatically."
 }
 
 # Build & publish

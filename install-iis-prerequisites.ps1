@@ -419,7 +419,8 @@ function Enable-ArrProxy {
 
     try {
         Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "enabled" -Value "True"
-        Write-Ok "ARR reverse proxy enabled"
+        Set-WebConfigurationProperty -PSPath "MACHINE/WEBROOT/APPHOST" -Filter "system.webServer/proxy" -Name "preserveHostHeader" -Value "False"
+        Write-Ok "ARR reverse proxy enabled (preserveHostHeader=false)"
     }
     catch {
         Write-Warn "Could not enable ARR proxy yet: $($_.Exception.Message)"
