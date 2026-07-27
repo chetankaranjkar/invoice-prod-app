@@ -113,7 +113,32 @@ function Grant-FolderAcl {
 
     foreach ($account in $Accounts) {
         if ([string]::IsNullOrWhiteSpace($account)) { continue }
-        & icacls $Path /grant "${account}:(OI)(CI)$Rights" /T | Out-Null
+        $output = & icacls $Path /grant "${account}:(OI)(CI)$Rights" /T 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "${account}: $($output -join ' ')"
+        }
+    }
+}
+
+function Set-ApiSiteLocalhostBinding {
+    param(
+        [string]$SiteName,
+        [int]$Port
+    )
+
+    $bindings = @(Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue)
+    foreach ($binding in $bindings) {
+        $info = $binding.bindingInformation
+        if ($info -and $info -ne "127.0.0.1:${Port}:") {
+            Remove-WebBinding -Name $SiteName -BindingInformation $info -ErrorAction SilentlyContinue
+        }
+    }
+
+    $hasLocalBinding = Get-WebBinding -Name $SiteName -Protocol "http" -ErrorAction SilentlyContinue |
+        Where-Object { $_.bindingInformation -eq "127.0.0.1:${Port}:" }
+
+    if (-not $hasLocalBinding) {
+        New-WebBinding -Name $SiteName -Protocol "http" -IPAddress "127.0.0.1" -Port $Port | Out-Null
     }
 }
 
@@ -554,7 +579,31 @@ New-FrontendWebConfig -Path (Join-Path $WebDeployPath "web.config") -BackendPort
 
 Write-Ok "Configuration files written"
 
-# Permissions
+# IIS sites (create pools first so app pool identity exists for ACL/SQL)
+Write-Step "Creating IIS application pools and websites..."
+
+Stop-IfExists -SiteName $ApiSiteName -AppPoolName $ApiAppPool
+Stop-IfExists -SiteName $WebSiteName -AppPoolName $WebAppPool
+
+New-WebAppPool -Name $ApiAppPool | Out-Null
+Set-ItemProperty "IIS:\AppPools\$ApiAppPool" -Name managedRuntimeVersion -Value ""
+Set-ItemProperty "IIS:\AppPools\$ApiAppPool" -Name startMode -Value "AlwaysRunning"
+
+New-WebAppPool -Name $WebAppPool | Out-Null
+Set-ItemProperty "IIS:\AppPools\$WebAppPool" -Name managedRuntimeVersion -Value ""
+
+New-Website -Name $ApiSiteName -PhysicalPath $ApiDeployPath -ApplicationPool $ApiAppPool -Port $ApiPort | Out-Null
+Set-ApiSiteLocalhostBinding -SiteName $ApiSiteName -Port $ApiPort
+
+New-Website -Name $WebSiteName -PhysicalPath $WebDeployPath -ApplicationPool $WebAppPool -Port $WebPort | Out-Null
+
+Start-WebAppPool -Name $ApiAppPool
+Start-WebAppPool -Name $WebAppPool
+Start-Sleep -Seconds 2
+
+Write-Ok "IIS sites created"
+
+# Permissions (after app pool exists)
 Write-Step "Setting folder permissions..."
 
 $sqlServiceAccounts = @(
@@ -577,7 +626,13 @@ $escapedPool = $ApiPoolIdentity.Replace("'", "''")
 $sqlSetup = @"
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'$escapedPool')
     CREATE LOGIN [$ApiPoolIdentity] FROM WINDOWS;
-IF IS_ROLEMEMBER('dbcreator', N'$escapedPool') = 0
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.server_role_members rm
+    INNER JOIN sys.server_principals role_p ON rm.role_principal_id = role_p.principal_id
+    INNER JOIN sys.server_principals member_p ON rm.member_principal_id = member_p.principal_id
+    WHERE role_p.name = N'dbcreator' AND member_p.name = N'$escapedPool'
+)
     ALTER SERVER ROLE dbcreator ADD MEMBER [$ApiPoolIdentity];
 IF DB_ID(N'$DatabaseName') IS NOT NULL
 BEGIN
@@ -599,29 +654,6 @@ if (Invoke-SqlNonQuery -Server $SqlServer -Query $sqlSetup) {
     Write-Ok "SQL permissions configured (API will create DB on first start if missing)"
 }
 
-# IIS sites
-Write-Step "Creating IIS application pools and websites..."
-
-Stop-IfExists -SiteName $ApiSiteName -AppPoolName $ApiAppPool
-Stop-IfExists -SiteName $WebSiteName -AppPoolName $WebAppPool
-
-New-WebAppPool -Name $ApiAppPool | Out-Null
-Set-ItemProperty "IIS:\AppPools\$ApiAppPool" -Name managedRuntimeVersion -Value ""
-Set-ItemProperty "IIS:\AppPools\$ApiAppPool" -Name startMode -Value "AlwaysRunning"
-
-New-WebAppPool -Name $WebAppPool | Out-Null
-Set-ItemProperty "IIS:\AppPools\$WebAppPool" -Name managedRuntimeVersion -Value ""
-
-New-Website -Name $ApiSiteName -PhysicalPath $ApiDeployPath -ApplicationPool $ApiAppPool -Port $ApiPort | Out-Null
-
-# Restrict API to localhost only (not exposed on LAN)
-Get-WebBinding -Name $ApiSiteName -Protocol "http" -ErrorAction SilentlyContinue | ForEach-Object { $_.Remove() | Out-Null }
-New-WebBinding -Name $ApiSiteName -Protocol "http" -IPAddress "127.0.0.1" -Port $ApiPort | Out-Null
-
-New-Website -Name $WebSiteName -PhysicalPath $WebDeployPath -ApplicationPool $WebAppPool -Port $WebPort | Out-Null
-
-Start-WebAppPool -Name $ApiAppPool
-Start-WebAppPool -Name $WebAppPool
 Start-Website -Name $ApiSiteName
 Start-Website -Name $WebSiteName
 
