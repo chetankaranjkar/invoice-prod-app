@@ -194,6 +194,38 @@ function New-ProductionAppSettings {
     Set-Content -Path $Path -Value $json -Encoding UTF8
 }
 
+function Get-WebConfigSystemWebServerNode {
+    param([xml]$Xml)
+
+    $node = $Xml.SelectSingleNode("//*[local-name()='system.webServer']")
+    if ($node) {
+        return $node
+    }
+
+    $configuration = $Xml.SelectSingleNode("//*[local-name()='configuration']")
+    if (-not $configuration) {
+        $configuration = $Xml.CreateElement("configuration")
+        if ($Xml.DocumentElement) {
+            [void]$Xml.ReplaceChild($configuration, $Xml.DocumentElement)
+        }
+        else {
+            [void]$Xml.AppendChild($configuration)
+        }
+    }
+
+    $location = $Xml.SelectSingleNode("//*[local-name()='location']")
+    if (-not $location) {
+        $location = $Xml.CreateElement("location")
+        $location.SetAttribute("path", ".")
+        $location.SetAttribute("inheritInChildApplications", "false")
+        [void]$configuration.AppendChild($location)
+    }
+
+    $systemWebServer = $Xml.CreateElement("system.webServer")
+    [void]$location.AppendChild($systemWebServer)
+    return $systemWebServer
+}
+
 function Update-ApiWebConfig {
     param([string]$WebConfigPath)
 
@@ -203,43 +235,39 @@ function Update-ApiWebConfig {
     }
 
     [xml]$xml = Get-Content $WebConfigPath
-    $systemWebServer = $xml.configuration.'system.webServer'
-    if (-not $systemWebServer) {
-        $systemWebServer = $xml.CreateElement("system.webServer")
-        [void]$xml.configuration.AppendChild($systemWebServer)
-    }
+    $systemWebServer = Get-WebConfigSystemWebServerNode -Xml $xml
 
-    $security = $systemWebServer.security
+    $security = $systemWebServer.SelectSingleNode("*[local-name()='security']")
     if (-not $security) {
         $security = $xml.CreateElement("security")
         [void]$systemWebServer.AppendChild($security)
     }
 
-    $requestFiltering = $security.requestFiltering
+    $requestFiltering = $security.SelectSingleNode("*[local-name()='requestFiltering']")
     if (-not $requestFiltering) {
         $requestFiltering = $xml.CreateElement("requestFiltering")
         [void]$security.AppendChild($requestFiltering)
     }
 
-    $requestLimits = $requestFiltering.requestLimits
+    $requestLimits = $requestFiltering.SelectSingleNode("*[local-name()='requestLimits']")
     if (-not $requestLimits) {
         $requestLimits = $xml.CreateElement("requestLimits")
         [void]$requestFiltering.AppendChild($requestLimits)
     }
     $requestLimits.SetAttribute("maxAllowedContentLength", "1073741824")
 
-    $aspNetCore = $systemWebServer.aspNetCore
+    $aspNetCore = $systemWebServer.SelectSingleNode("*[local-name()='aspNetCore']")
     if ($aspNetCore) {
         $aspNetCore.SetAttribute("requestTimeout", "00:10:00")
 
-        $envVars = $aspNetCore.environmentVariables
+        $envVars = $aspNetCore.SelectSingleNode("*[local-name()='environmentVariables']")
         if (-not $envVars) {
             $envVars = $xml.CreateElement("environmentVariables")
             [void]$aspNetCore.AppendChild($envVars)
         }
 
         $existing = @{}
-        foreach ($node in $envVars.SelectNodes("environmentVariable")) {
+        foreach ($node in $envVars.SelectNodes("*[local-name()='environmentVariable']")) {
             $existing[$node.GetAttribute("name")] = $node
         }
 
