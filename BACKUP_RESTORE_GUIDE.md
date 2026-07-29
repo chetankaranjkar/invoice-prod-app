@@ -121,6 +121,37 @@ If database restore fails:
 2. Verify backup file is accessible in shared volume
 3. Try restoring using the command-line script instead
 
+### Sector size 512 vs 4096 (Docker backup on IIS SQL Express)
+
+**Symptom in SSMS:**  
+`Cannot use the backup file '...\InvoiceApp.bak' because it was originally formatted with sector size 512 and is now on a device with sector size 4096.`
+
+This happens when a `.bak` from **Docker SQL** (512-byte sectors) was copied into SQL Express’s default `Backup` folder on a **4K native drive**. SQL Server cannot **overwrite** that existing file path for a new backup.
+
+**Fix — new backup on IIS SQL Express (SSMS):**
+1. Delete the old file (or pick a new name):
+   - `C:\Program Files\Microsoft SQL Server\MSSQL16.SQLEXPRESS\MSSQL\Backup\InvoiceApp.bak`
+2. In SSMS: right-click database → **Tasks → Back Up Database**
+3. Use a **new file name**, e.g. `InvoiceApp_20260729.bak` (do not reuse `InvoiceApp.bak`)
+
+**Fix — restore Docker `.bak` onto IIS SQL Express:**
+
+**Option A — Script (recommended):**
+```cmd
+restore-sql-backup.bat -BackupFile "D:\path\to\InvoiceApp.bak" -SqlServer ".\SQLEXPRESS" -Force
+```
+
+**Option B — SSMS:**
+1. Copy the Docker `.bak` to a **new path/name**, e.g. `C:\temp\docker_InvoiceApp.bak`
+2. Do **not** put it in the default `Backup` folder as `InvoiceApp.bak` if that file already exists from Docker
+3. SSMS → Databases → **Restore Database** → Device → select the **new** file
+4. Options → check **Overwrite existing database (WITH REPLACE)**
+
+**Option C — App ZIP backup:**  
+Use **Backup & Restore** in the web UI with the full `invoiceapp-backup-*.zip` from Docker (not a raw `.bak` alone).
+
+**Note:** Restoring a `.bak` onto SQL Express is fine; the sector error is about **reusing the same backup file path on disk**, not about reading the backup content.
+
 ## Backup File Locations
 
 - **Web backups**: Stored in `wwwroot/backups/` inside API container

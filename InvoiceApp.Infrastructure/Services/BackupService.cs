@@ -451,6 +451,17 @@ namespace InvoiceApp.Infrastructure.Services
             };
         }
 
+        private static bool IsSectorSizeMismatchMessage(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            return message.Contains("sector size", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("formatted with sector", StringComparison.OrdinalIgnoreCase);
+        }
+
         private const string BackupFileName = "InvoiceApp.bak";
 
         private async Task<(bool Success, string? ErrorMessage)> BackupDatabaseAsync(string backupDir)
@@ -620,11 +631,18 @@ namespace InvoiceApp.Infrastructure.Services
             Directory.CreateDirectory(stagingDir);
             await EnsureWindowsSqlBackupDirectoryAsync(connectionString, stagingDir);
 
-            var stagingPath = Path.Combine(stagingDir, BackupFileName);
+            var stagingPath = Path.Combine(stagingDir, $"InvoiceApp_{DateTime.Now:yyyyMMdd_HHmmss}.bak");
             TryDeleteFile(stagingPath);
 
             try
             {
+                await ExecuteBackupDatabaseAsync(connectionString, database, stagingPath);
+            }
+            catch (SqlException ex) when (IsSectorSizeMismatchMessage(ex.Message))
+            {
+                // Old .bak on disk may have 512-byte sectors; current volume uses 4K — use a fresh file name.
+                stagingPath = Path.Combine(stagingDir, $"InvoiceApp_{Guid.NewGuid():N}.bak");
+                TryDeleteFile(stagingPath);
                 await ExecuteBackupDatabaseAsync(connectionString, database, stagingPath);
             }
             catch (SqlException ex)
@@ -706,7 +724,9 @@ namespace InvoiceApp.Infrastructure.Services
             var accounts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 @"NT SERVICE\MSSQLSERVER",
-                @"NT Service\MSSQLSERVER"
+                @"NT Service\MSSQLSERVER",
+                @"NT SERVICE\MSSQL$SQLEXPRESS",
+                @"NT Service\MSSQL$SQLEXPRESS"
             };
 
             try
@@ -1218,7 +1238,9 @@ namespace InvoiceApp.Infrastructure.Services
             Directory.CreateDirectory(stagingDir);
             await EnsureWindowsSqlBackupDirectoryAsync(masterConnectionString, stagingDir);
 
-            var stagingPath = Path.Combine(stagingDir, fileName);
+            // Always use a fresh file name — reusing InvoiceApp.bak on 4K volumes can fail if the
+            // path was previously written on 512-byte sector media (common with Docker .bak copies).
+            var stagingPath = Path.Combine(stagingDir, $"restore_{Guid.NewGuid():N}.bak");
             File.Copy(localBackupFilePath, stagingPath, true);
             _logger.LogInformation("Copied backup for restore to {Path}", stagingPath);
             return stagingPath;

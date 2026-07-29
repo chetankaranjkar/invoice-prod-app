@@ -1,33 +1,18 @@
 import html2canvas from 'html2canvas';
 
-/** Tailwind v4 emits oklab/oklch — html2canvas cannot parse them. Use hex/rgb only in PDF clone. */
-const MODERN_COLOR_PATTERN =
-  /(?:oklab|oklch|oslch|color-mix|lab|lch)\((?:[^()]*|\([^()]*\))*\)/gi;
-
-export function stripModernColorFunctions(css: string): string {
-  let result = css;
-  for (let pass = 0; pass < 8; pass++) {
-    const next = result.replace(MODERN_COLOR_PATTERN, '#6b7280');
-    if (next === result) break;
-    result = next;
-  }
-  return result;
-}
+/**
+ * NOTE: We render via `html2canvas-pro` (aliased in vite.config.ts), which natively
+ * supports oklch/oklab/color-mix. Earlier versions of this file stripped ALL page
+ * stylesheets from the PDF clone to work around stock html2canvas's inability to
+ * parse those color functions — that also destroyed borders, rounded corners, and
+ * flex layout for every box on the invoice (visible as a "flat", unstyled PDF in
+ * production builds, since prod CSS loads via a <link> tag rather than dev <style>
+ * tags). We now keep the real stylesheet and only patch a few known html2canvas
+ * quirks below.
+ */
 
 function isSafeCssColor(value: string | null | undefined): boolean {
-  if (!value || value === 'transparent' || value === 'rgba(0, 0, 0, 0)') return false;
-  return !/oklab|oklch|oslch|color-mix/i.test(value);
-}
-
-/** Walk source + clone trees in parallel; inline browser-computed RGB colors on clone. */
-export function sanitizeInlineStyles(root: HTMLElement): void {
-  const allElements = [root, ...Array.from(root.querySelectorAll('*'))] as HTMLElement[];
-  allElements.forEach((el) => {
-    const styleAttr = el.getAttribute('style');
-    if (styleAttr && /oklab|oklch|oslch|color-mix/i.test(styleAttr)) {
-      el.setAttribute('style', stripModernColorFunctions(styleAttr));
-    }
-  });
+  return !!value && value !== 'transparent' && value !== 'rgba(0, 0, 0, 0)';
 }
 
 export async function convertClonedImagesToDataUrls(
@@ -108,76 +93,21 @@ export function inlineComputedColors(sourceRoot: HTMLElement, cloneRoot: HTMLEle
   walk(sourceRoot, cloneRoot);
 }
 
-/** Invoice PDF shell — explicit hex/rgb (no Tailwind color utilities on clone). */
+/**
+ * Small, additive overrides layered ON TOP of the page's real stylesheet (which is
+ * now preserved in the clone). Only fixes for known html2canvas rendering quirks —
+ * must never hide/replace the site's own borders, colors, or layout.
+ */
 export const PDF_SAFE_INVOICE_CSS = `
 .pdf-export {
   background-color: #ffffff !important;
-  color: #0f172a !important;
-  /* Hostania often 404s on IIS; missing fonts + flex cause html2canvas to drop word spaces */
-  font-family: Arial, Helvetica, "Segoe UI", sans-serif !important;
-  letter-spacing: normal !important;
-  word-spacing: normal !important;
 }
-.pdf-export,
-.pdf-export * {
-  font-family: Arial, Helvetica, "Segoe UI", sans-serif !important;
-  letter-spacing: normal !important;
-  word-spacing: normal !important;
-}
-/* html2canvas drops spaces inside display:flex text; use block flow for PDF clone */
-.pdf-export .flex {
-  display: block !important;
-}
-.pdf-export .flex.items-start,
-.pdf-export .flex.items-center {
-  display: block !important;
-}
-.pdf-export .min-w-0.flex-1 {
-  display: block !important;
-  width: 100% !important;
-  min-width: 0 !important;
-}
-.pdf-export .bg-\\[\\#d1d5dc\\],
-.pdf-export .bg-\\[\\#d1d5dc\\] {
-  background-color: #d1d5dc !important;
-}
-.pdf-export .bg-\\[\\#1f2937\\],
-.pdf-export .bg-slate-100 {
-  background-color: #d1d5dc !important;
-  color: #0f172a !important;
-}
-.pdf-export .bg-\\[\\#1f2937\\] {
-  background-color: #1f2937 !important;
-  color: #ffffff !important;
-}
-.pdf-export .bg-sky-50\\/50,
-.pdf-export .bg-slate-50\\/60 {
-  background-color: #f8fafc !important;
-}
-.pdf-export .text-\\[\\#6b7280\\],
-.pdf-export .text-\\[\\#4b5563\\] {
-  color: #4b5563 !important;
-}
-.pdf-export .border,
-.pdf-export .border-\\[\\#9ca3af\\],
-.pdf-export .border-\\[\\#d1d5db\\],
-.pdf-export .border-\\[\\#e5e7eb\\] {
-  border-color: #9ca3af !important;
-}
-.pdf-export th,
-.pdf-export td {
-  border-color: #9ca3af !important;
-}
-/* Thinner table borders in PDF output. */
+/* Thinner table borders in PDF output (cosmetic preference, not a compatibility fix). */
 .pdf-export .invoice-table,
 .pdf-export .invoice-hierarchy-table,
-.pdf-export .invoice-description-table {
-  border-width: 0.5px !important;
-}
+.pdf-export .invoice-description-table,
 .pdf-export .invoice-hierarchy-table-wrap,
-.pdf-export .invoice-description-table-wrap {
-  border-width: 0.5px !important;
-}
+.pdf-export .invoice-description-table-wrap,
 .pdf-export .invoice-table th,
 .pdf-export .invoice-table td,
 .pdf-export .invoice-table tr,
@@ -208,15 +138,8 @@ export function sanitizeClonedDocumentForHtml2Canvas(
   sourceRoot: HTMLElement,
   cloneRoot: HTMLElement
 ): void {
-  clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((node) => {
-    node.parentNode?.removeChild(node);
-  });
-
-  clonedDoc.querySelectorAll('style').forEach((tag) => {
-    if (tag.textContent) {
-      tag.textContent = stripModernColorFunctions(tag.textContent);
-    }
-  });
+  // Keep the page's real stylesheet(s) intact — html2canvas-pro can parse them,
+  // and removing them was previously dropping every border/rounded-corner/flex layout.
 
   const safeStyle = clonedDoc.createElement('style');
   safeStyle.setAttribute('data-pdf-safe', 'true');
@@ -229,16 +152,10 @@ export function sanitizeClonedDocumentForHtml2Canvas(
     pdfRoot.classList.add('pdf-export');
   }
 
-  sanitizeInlineStyles(cloneRoot);
+  // Reinforce computed colors as a safety net in case any inline style or dynamic
+  // (user-picked) color slipped through as oklch/oklab that the browser resolves
+  // to rgb() via getComputedStyle anyway.
   inlineComputedColors(sourceRoot, cloneRoot);
-
-  // Override any computed Hostania / tracking-* letter-spacing from the live DOM
-  const all = [cloneRoot, ...Array.from(cloneRoot.querySelectorAll('*'))] as HTMLElement[];
-  for (const el of all) {
-    el.style.fontFamily = 'Arial, Helvetica, "Segoe UI", sans-serif';
-    el.style.letterSpacing = 'normal';
-    el.style.wordSpacing = 'normal';
-  }
 
   preserveSpacesInClone(cloneRoot);
 }
