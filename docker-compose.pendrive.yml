@@ -36,8 +36,8 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - CONNECTION_STRING=Server=sqlserver,1433;Database=InvoiceApp;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=true;MultipleActiveResultSets=true;Connect Timeout=60;Command Timeout=60;Pooling=true
       - JWT__SECRET=YourSuperSecretKeyForJWTTokenGeneration2024!MakeThisVeryLongAndSecure!
-      - CORS__ALLOWEDORIGINS__0=http://invoiceapp.local:3000
-      - CORS__ALLOWEDORIGINS__1=http://localhost:3000
+      - CORS__ALLOWEDORIGINS__0=http://invoiceapp.local:3080
+      - CORS__ALLOWEDORIGINS__1=http://localhost:3080
       - CORS__ALLOWEDORIGINS__2=http://frontend
       - CORS__ALLOWEDORIGINS__3=http://localhost
     ports:
@@ -63,7 +63,7 @@ services:
     image: invoiceapp-frontend:latest
     container_name: invoiceapp-frontend
     ports:
-      - "3000:80"
+      - "3080:80"
     depends_on:
       - api
     networks:

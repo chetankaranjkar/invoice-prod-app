@@ -8,7 +8,7 @@ echo   1. Stop running containers
 echo   2. Rebuild API and Frontend images with latest changes
 echo   3. Create new invoiceapp-images.tar file
 echo.
-echo NOTE: This includes the new port configuration (3000/5000)
+echo NOTE: This includes the new port configuration (3080/5000)
 echo       and domain name support (invoiceapp.local)
 echo.
 pause
@@ -129,12 +129,12 @@ echo ====================================
 echo.
 echo Files ready for distribution:
 echo   1. invoiceapp-images.tar (Docker images)
-echo   2. docker-compose.yml (Updated with new ports: 3000/5000)
+echo   2. docker-compose.yml (Updated with new ports: 3080/5000)
 echo   3. install-from-pendrive.bat (Installation script)
 echo   4. setup-domain.bat (Optional: Domain name setup)
 echo.
 echo Updated Configuration:
-echo   - Frontend: http://localhost:3000 or http://invoiceapp.local:3000
+echo   - Frontend: http://localhost:3080 or http://invoiceapp.local:3080
 echo   - API:      http://localhost:5000
 echo   - Swagger:   http://localhost:5000/swagger
 echo.

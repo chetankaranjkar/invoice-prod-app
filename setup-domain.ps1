@@ -59,7 +59,7 @@ Write-Host "Setup Complete!" -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "You can now access the application at:" -ForegroundColor Yellow
-Write-Host "  Frontend: http://invoiceapp.local:3000" -ForegroundColor White
+Write-Host "  Frontend: http://invoiceapp.local:3080" -ForegroundColor White
 Write-Host "  API:      http://localhost:5000" -ForegroundColor White
 Write-Host "  Swagger:  http://localhost:5000/swagger" -ForegroundColor White
 Write-Host ""

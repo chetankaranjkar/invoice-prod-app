@@ -1,11 +1,11 @@
 # Domain Name Setup Guide
 
-This guide explains how to access the InvoiceApp using a friendly domain name (`invoiceapp.local`) instead of `localhost:3000`.
+This guide explains how to access the InvoiceApp using a friendly domain name (`invoiceapp.local`) instead of `localhost:3080`.
 
 ## Overview
 
 After setup, you can access the application using:
-- **Frontend**: `http://invoiceapp.local:3000` (instead of `http://localhost:3000`)
+- **Frontend**: `http://invoiceapp.local:3080` (instead of `http://localhost:3080`)
 - **API**: `http://localhost:5000` (unchanged)
 - **Swagger**: `http://localhost:5000/swagger` (unchanged)
 
@@ -56,7 +56,7 @@ After setup, verify it works:
 
 3. **Open your browser** and navigate to:
    ```
-   http://invoiceapp.local:3000
+   http://invoiceapp.local:3080
    ```
 
 ## Troubleshooting
@@ -83,10 +83,10 @@ After setup, verify it works:
   docker-compose restart api
   ```
 
-### Port 3000 still required?
+### Port 3080 still required?
 
-Yes, we're using port 3000 to avoid conflicts with port 80. The domain name makes it easier to remember, but the port is still needed:
-- `http://invoiceapp.local:3000` ✅
+Yes, we're using port 3080 to avoid conflicts with port 80. The domain name makes it easier to remember, but the port is still needed:
+- `http://invoiceapp.local:3080` ✅
 - `http://invoiceapp.local` ❌ (won't work)
 
 ## Removing the Domain
@@ -115,7 +115,7 @@ To remove the domain from your hosts file:
 ### What Changed?
 
 1. **nginx.conf**: Updated `server_name` to accept `invoiceapp.local`
-2. **CORS Settings**: Added `http://invoiceapp.local:3000` to allowed origins
+2. **CORS Settings**: Added `http://invoiceapp.local:3080` to allowed origins
 3. **Hosts File**: Maps `invoiceapp.local` to `127.0.0.1`
 
 ### Files Modified
@@ -125,9 +125,9 @@ To remove the domain from your hosts file:
 - `InvoiceApp.Api/appsettings.json` - Added domain to CORS allowed origins
 - `InvoiceApp.Api/Program.cs` - Updated default CORS origins
 
-### Why Port 3000?
+### Why Port 3080?
 
-We use port 3000 instead of port 80 to avoid conflicts with:
+We use port 3080 instead of port 80 to avoid conflicts with:
 - Windows IIS (Internet Information Services)
 - Other web servers
 - System services that may use port 80

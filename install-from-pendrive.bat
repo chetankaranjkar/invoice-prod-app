@@ -172,8 +172,8 @@ echo.
 echo ========================================
 echo Application Access URLs:
 echo ========================================
-echo - Frontend: http://localhost:3000
-echo - Frontend (Domain): http://invoiceapp.local:3000 (if domain is set up)
+echo - Frontend: http://localhost:3080
+echo - Frontend (Domain): http://invoiceapp.local:3080 (if domain is set up)
 echo - API: http://localhost:5000
 echo - API Swagger: http://localhost:5000/swagger
 echo - SQL Server (SSMS): localhost,1434
